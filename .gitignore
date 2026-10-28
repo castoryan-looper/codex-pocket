@@ -1,0 +1,17 @@
+.venv/
+bridge/runtime/
+firmware/Pocket/device_config.h
+build/
+backup/
+models/
+*.log
+__pycache__/
+*.py[cod]
+.env
+.env.*
+*.key
+auth.json
+connection.json
+connection-private.json
+*.connection.json
+assistant-workspace/
