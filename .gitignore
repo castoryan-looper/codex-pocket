@@ -15,3 +15,7 @@ connection.json
 connection-private.json
 *.connection.json
 assistant-workspace/
+.usb-config-venv/
+.usb-config-runtime/
+runtime/
+*.tmp.*
