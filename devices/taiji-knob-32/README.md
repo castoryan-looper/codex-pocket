@@ -1,6 +1,6 @@
 # Taiji Knob 32 适配工作区
 
-版本：codex-pocket-taiji-0.12.6。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。S3 已实机刷入，USB/PSRAM 缓存/Wi-Fi 扫描通过；屏幕与输入体验仍在核对，尚未配置云端，不代表已完成真实语音全链路验收。其他同名硬件修订版需核对原理图。
+版本：codex-pocket-taiji-0.12.6。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。S3 已实机刷入，USB、PSRAM 缓存、Wi-Fi 与云端连接、屏幕方向和触摸命中已验证。128 KB 可取消诊断上传完成且无掉线；真实语音识别及外接音频播放仍需听测验收。其他同名硬件修订版需核对原理图。
 
 ## 已实现的硬件无关部分
 

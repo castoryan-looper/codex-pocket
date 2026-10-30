@@ -113,3 +113,5 @@ COM12 实测芯片为 ESP32-S3、16 MB Flash / 8 MB PSRAM。先读取完整 16 M
 ### Taiji 0.12.6
 
 旋钮过滤改为 2 ms，新增连续短脉冲与反转覆盖；44 项 Python/C++ 测试及三个 JS 配置测试通过。S3 编译 1662547 bytes，静态 RAM 71008 bytes。设备 Wi-Fi 能扫描到已保存网络，但本次连接返回 210；云端配置尚为空，不能视为语音/推荐全链路验收。
+
+后续实机验证：迁移本地旧设备连接配置后，passwordSaved=true、wifiConnected=true、wifiReason=0、cloudConnected=true，收到推荐主页。128000-byte 可取消诊断上传完成（100%、0 retries、audioEndSent=true、无音频错误）；12 次上传期间状态采样未发现云端离线，提示音播放计数增加且失败数为 0。随后真实录音已上传 149760 bytes，状态未报音频错误；识别语义与外接耳机听测仍待用户确认。私密配置未提交仓库。
