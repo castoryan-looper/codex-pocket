@@ -2,7 +2,7 @@
 #include "taiji_port.h"
 #include "round_interaction.h"
 #include "quadrature.h"
-#include "dual_mode_encoder.h"
+#include "directional_pulse_encoder.h"
 #include "round_geometry.h"
 #include "taiji_local_ui.h"
 static void taijiAscii(uint8_t *image,int px,int py,const String &text,int scale=1){
@@ -11,11 +11,11 @@ static void taijiAscii(uint8_t *image,int px,int py,const String &text,int scale
       for(int sy=0;sy<scale;sy++)for(int sx=0;sx<scale;sx++){int xx=px+(n*7+x)*scale+sx,yy=py+y*scale+sy;if(xx>=0&&xx<360&&yy>=0&&yy<360)image[yy*45+xx/8]|=0x80>>(xx%8);}
   }
 }
-static pocket::DualModeEncoder taijiEncoder;
+static pocket::DirectionalPulseEncoder taijiEncoder;
 static portMUX_TYPE taijiEncoderLock=portMUX_INITIALIZER_UNLOCKED;
 static void ARDUINO_ISR_ATTR taijiEncoderEdge(){
   uint8_t state=(gpio_get_level((gpio_num_t)TAIJI_ENCODER_A)<<1)|gpio_get_level((gpio_num_t)TAIJI_ENCODER_B);
-  portENTER_CRITICAL_ISR(&taijiEncoderLock);taijiEncoder.edge(state,millis());taijiEncoderEdges++;portEXIT_CRITICAL_ISR(&taijiEncoderLock);
+  portENTER_CRITICAL_ISR(&taijiEncoderLock);taijiEncoder.edge(state,micros());taijiEncoderEdges++;portEXIT_CRITICAL_ISR(&taijiEncoderLock);
 }
 static void screenTask(void*){
   screenPhase=1;esp_err_t initialized=taijiDisplayInit();
@@ -51,7 +51,7 @@ static void screenTask(void*){
         if(ui==UiSending)taijiAscii(snapshot,145,204,String(uploadProgress)+"%",2);
         if(ui==UiAudioError)taijiAscii(snapshot,65,210,audioFailure);
       }
-      esp_err_t result=taijiPresent(snapshot,native,selected);screenPhase=result==ESP_OK?4:5;
+      esp_err_t result=taijiPresent(snapshot,native,selected,configModeActive?-2:ui==UiRecording?-3:ui==UiIdle?roundView:-1);screenPhase=result==ESP_OK?4:5;
       if(result==ESP_OK){
         partialRefreshes++;JsonDocument ack;ack["type"]="frame_ack";ack["hash"]=hash;
         ack["wifiConnected"]=WiFi.status()==WL_CONNECTED;ack["usbConnected"]=HWCDC::isPlugged();ack["configurationMode"]=(bool)configModeActive;
@@ -104,13 +104,14 @@ static void taijiLoop(){
   if(configModeActive){portalCloseAt=now+100;return;}
   if(recording||captureRequested||uploadPending)return;
   int swipeY=(int)currentY-startY,swipeX=(int)currentX-startX;
+  if(roundView==0&&abs(swipeX)>45&&abs(swipeX)>abs(swipeY)){if(online&&netConnected)event("knob_feed");return;}
   if(roundView==2 && (abs(swipeY)>35||abs(swipeX)>35)){
     if(online&&netConnected)event((abs(swipeY)>abs(swipeX)?swipeY:swipeX)<0?"knob_right":"knob_left");return;
   }
   if(abs(swipeX)>25||abs(swipeY)>25||now-lastTap<220)return;
   lastTap=now;
   if(initialHit==pocket::RoundHit::Tools){startConfigPortal(false);return;}
-  if(initialHit==pocket::RoundHit::Back){if(online&&netConnected)event(roundView==3?"b2_click":"knob_back");return;}
+  if(initialHit==pocket::RoundHit::Back){if(online&&netConnected)event(roundView==3?"b2_click":roundView==0?"knob_feed":"knob_back");return;}
   if(!online||!netConnected)return;
   if(roundView==0 && initialHit==pocket::RoundHit::A)event("rec_a");
   else if(roundView==0 && initialHit==pocket::RoundHit::B)event("rec_b");

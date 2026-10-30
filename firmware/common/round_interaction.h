@@ -85,7 +85,7 @@ inline RoundHit roundHit(int x,int y,int diameter,RoundView view) {
   const int dx=2*x-diameter,dy=2*y-diameter;
   if (int64_t(dx)*dx+int64_t(dy)*dy>int64_t(diameter-12)*(diameter-12)) return RoundHit::None;
   const int px=x*360/diameter,py=y*360/diameter;
-  if (py>=270 && py<=316 && px>=124 && px<=236) return RoundHit::Mic;
+  if (py>=270 && py<=320 && px>=108 && px<=252) return RoundHit::Mic;
   if (py>=270 && px<105) return RoundHit::Back;
   if (py>=270 && px>255) return RoundHit::Tools;
   if (view==RoundView::Choices && px>=54 && px<=306) {

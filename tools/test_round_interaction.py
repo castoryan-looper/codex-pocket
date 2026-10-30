@@ -11,6 +11,8 @@ class RoundInteractionTests(unittest.TestCase):
         audio=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/ram_audio_cache.h').as_posix()
         dual=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/dual_mode_encoder.h').as_posix()
         geometry=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/round_geometry.h').as_posix()
+        pulse=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/directional_pulse_encoder.h').as_posix()
+        theme=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/round_theme.h').as_posix()
         code=r'''
 #include <cassert>
 #include "HEADER"
@@ -19,6 +21,8 @@ class RoundInteractionTests(unittest.TestCase):
 #include "AUDIO"
 #include "DUAL"
 #include "GEOMETRY"
+#include "PULSE"
+#include "THEME"
 #include <vector>
 using namespace pocket;
 int main(){
@@ -67,6 +71,19 @@ int main(){
  assert(reader.read(readback,4)==1);assert(reader.available()==0);reader.close();
  RamAudioFile retry(store,false);assert(retry.read(readback,4)==4);assert(readback[0]==1&&readback[3]==4);
  assert(retry.write(payload,4)==0);retry.close();assert(retry.read(readback,4)==0);
+ DirectionalPulseEncoder pulse;pulse.begin(3);
+ pulse.edge(1,100);pulse.edge(3,250);assert(pulse.take(250)==1);
+ pulse.edge(1,300);pulse.edge(3,450);assert(pulse.take(450)==0); // contact bounce
+ pulse.edge(2,10000);pulse.edge(3,10150);assert(pulse.take(10150)==-1);
+ pulse.begin(3);int shortSteps=0;
+ for(unsigned t=100;t<200100;t+=10000){pulse.edge(1,t);pulse.edge(3,t+100);shortSteps+=pulse.take(t+100);}assert(shortSteps==20);
+ pulse.begin(3);pulse.edge(1,100);pulse.edge(3,110);assert(pulse.take(110)==0);
+ pulse.begin(3);pulse.edge(1,0xfffffff0U);pulse.edge(3,100);assert(pulse.take(100)==1);
+ assert(roundTheme(0,0,false,0,0)==0);
+ assert(roundTheme(160,140,false,0,0)!=roundTheme(160,212,false,0,0));
+ assert(roundTheme(180,300,false,0,0)!=roundTheme(180,260,false,0,0));
+ assert(roundTheme(180,300,true,0,0)!=roundTheme(180,300,false,0,0));
+ assert(roundHit(110,295,360,RoundView::Choices)==RoundHit::Mic);
  DualModeEncoder dual;dual.begin(3);
  dual.edge(1,10);dual.edge(3,20);assert(dual.take(21)==0);assert(dual.take(22)==1);assert(dual.mode==1);
  dual.edge(2,40);dual.edge(3,50);assert(dual.take(56)==-1);
@@ -97,7 +114,7 @@ int main(){
  assert(!openRoundSettingsOnTurn(false,false,false,true,false));
  assert(!openRoundSettingsOnTurn(false,false,false,false,true));
 }
-'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry)
+'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry).replace('PULSE',pulse).replace('THEME',theme)
         with tempfile.TemporaryDirectory() as folder:
             src=pathlib.Path(folder)/'round.cpp';src.write_text(code,encoding='utf-8')
             exe=pathlib.Path(folder)/'round.exe'

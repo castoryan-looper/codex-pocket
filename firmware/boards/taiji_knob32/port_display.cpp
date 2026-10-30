@@ -8,6 +8,7 @@
 #include "taiji_pins.h"
 #include "taiji_port.h"
 #include "round_geometry.h"
+#include "round_theme.h"
 extern "C" {extern const sh8601_lcd_init_cmd_t taiji_lcd_init_cmds[];extern const unsigned taiji_lcd_init_count;}
 static esp_lcd_panel_handle_t panel=nullptr;
 static SemaphoreHandle_t transferDone=nullptr;
@@ -59,7 +60,7 @@ bool taijiTouch(uint16_t &x,uint16_t &y,uint16_t *rawX,uint16_t *rawY){
   pocket::RoundPoint logical=pocket::orientRoundPoint(x,y,360,touchDegrees);x=logical.x;y=logical.y;
   return true;
 }
-esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection){
+esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection,int view){
   if(!ready||!bits)return ESP_ERR_INVALID_STATE;
   const unsigned rotation=displayDegrees;
   for(int top=0;top<360;top+=12){
@@ -67,15 +68,11 @@ esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection){
       int y=top+row;
       pocket::RoundPoint logical=pocket::orientRoundPoint(x,y,360,rotation);
       int lx=logical.x,ly=logical.y,dx=lx-180,dy=ly-180;
-      uint16_t color=0x0843;
-      if(dx*dx+dy*dy>178*178)color=0;
-      else if(native){
-        bool ink=bits[ly*45+lx/8]&(0x80>>(lx%8));
-        bool selected=selection>=0&&lx>=54&&lx<=306&&ly>=114+selection*72&&ly<174+selection*72;
-        color=ink?(selected?0xbff8:0xe7fc):0x0843;
-      }else if(lx>=60&&lx<300&&ly>=60&&ly<300){
+      uint16_t color=pocket::roundTheme(lx,ly,false,-1,-1);
+      if(native){bool ink=bits[ly*45+lx/8]&(0x80>>(lx%8));color=pocket::roundTheme(lx,ly,ink,view,selection);}
+      else if(lx>=60&&lx<300&&ly>=60&&ly<300){
         int sx=(lx-60)*200/240,sy=(ly-60)*200/240;
-        bool white=bits[sy*25+sx/8]&(0x80>>(sx%8));color=white?0x0843:0xe7fc;
+        bool white=bits[sy*25+sx/8]&(0x80>>(sx%8));color=pocket::roundTheme(lx,ly,!white,-1,-1);
       }
       stripe[row*360+x]=(color>>8)|(color<<8);
     }
