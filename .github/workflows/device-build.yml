@@ -1,0 +1,41 @@
+name: Build both Pocket devices
+on:
+  push:
+    branches: [main, master]
+    paths: ['firmware/**', 'build.ps1', '.github/workflows/device-build.yml']
+  pull_request:
+    paths: ['firmware/**', 'build.ps1', '.github/workflows/device-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [c6-epaper, taiji-knob32]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: pocket-esp32-3.3.0-libs-7.3.2-2.7.2-${{ runner.os }}-${{ matrix.device }}
+      - name: Install pinned toolchain and libraries
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.0 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install 'ArduinoJson@7.3.2' 'WebSockets@2.7.2'
+      - name: Compile selected board without private configuration
+        shell: pwsh
+        run: ./build.ps1 -Device '${{ matrix.device }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.device }}
+          path: |
+            build/**/Pocket.ino.bin
+            build/**/Pocket.ino.merged.bin

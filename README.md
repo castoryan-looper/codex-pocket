@@ -1,6 +1,6 @@
 # Codex Pocket：ESP32 随身终端
 
-适用 Waveshare ESP32-C6-ePaper-1.54，200×200，16MB Flash。当前设备固件 **0.11.1**。
+支持两个独立构建目标：Waveshare ESP32-C6-ePaper-1.54（200×200 墨水屏，固件 **0.11.1**），以及 [Taiji Knob 32 / ESP32-S3 1.8 英寸旋钮圆屏](devices/taiji-knob-32/README.md)（360×360，固件 **0.12.0**）。新设备按 Waveshare 原厂参考板实现，已通过编译，实机验证尚待完成。
 
 本仓库保存设备固件、USB/AP 管理页面和设备端测试。云端网关、目标推荐及部署由 [codex-pocket-cloud](https://github.com/castoryan-looper/codex-pocket-cloud) 维护。本次将此前集中在 cloud 仓库中的设备更新同步回来；来源提交及固件文件哈希记录在 firmware-source.json。两个仓库目前不是自动双向同步关系。
 
@@ -30,9 +30,10 @@ A/B 排序、目标进度和页面渲染在 cloud 网关实现；单独刷写固
 
 ```powershell
 .\build.ps1 -ArduinoCli arduino-cli
+.\build.ps1 -Device taiji-knob32 -ArduinoCli arduino-cli
 ```
 
-板参数：esp32c6，CDCOnBoot=cdc，FlashSize=16M，PartitionScheme=app3M_fat9M_16MB。固件目录为 firmware/Pocket。
+默认构建 C6；输出在 build/c6-epaper。S3 输出在 build/taiji-knob32/app；共享应用目录仍为 firmware/Pocket，构建时组合对应板级端口，不手工复制两套业务代码。S3 为 16 MB Flash、8 MB OPI PSRAM，使用硬件 USB CDC。
 
 flash.ps1 使用 merged 镜像从地址 0 写入，适用于完整安装。已有设备升级前应备份 Flash 并核对分区与活动应用，仅写对应应用分区，避免覆盖设备配置；不要直接套用其他设备的偏移。此次只是同步代码，没有再次刷写设备。
 

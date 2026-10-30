@@ -2,7 +2,7 @@
   "firmware": "0.11.1",
   "source_repository": "castoryan-looper/codex-pocket-cloud",
   "source_commit": "3083837ee8b00fdc137d886d842ed063279608c9",
-  "note": "Source hashes for the synchronized device firmware; no credentials or built images included.",
+  "note": "Historical 0.11.1 synchronization snapshot from cloud, before multi-board development. These hashes document that import, not the current working source.",
   "files": {
     "firmware/Pocket/Pocket.ino": "312276c923a62fefe1c1ea7aefbe09c59d45c2df1daa6b3a181641d42781f534",
     "firmware/Pocket/ascii_font.h": "491f6e57adbfe144c90385dc728efdb906294ea23702c9ee55931d3c1ded1333",

@@ -1,3 +1,6 @@
+#ifdef POCKET_TAIJI_KNOB32
+#include "taiji_pins.h"
+#else
 #ifndef EPAPER_CONFIG_H
 #define EPAPER_CONFIG_H
 
@@ -58,3 +61,4 @@
 #define I2C_FT6336_DEV_Address     0x38         
 
 #endif // !USER_CONFIG_H
+#endif

@@ -14,7 +14,14 @@
 #include "port_display.h"
 #include "port_codec.h"
 #include "port_adc.h"
+#ifndef POCKET_TAIJI_KNOB32
 #include "src/exio/esp_io_expander_tca9554.h"
+#endif
+#include "device_platform.h"
+#include "audio_store.h"
+#ifdef POCKET_TAIJI_KNOB32
+#include "bitmap_rle.h"
+#endif
 #include "offline.h"
 #include "connection_icons.h"
 #include "ascii_font.h"
@@ -58,7 +65,9 @@ public:
 static PocketSocket socketClient;
 static Preferences prefs;
 static OneButton bootButton, powerButton;
+#ifndef POCKET_TAIJI_KNOB32
 static esp_io_expander_handle_t exio;
+#endif
 static String wifiSsid, wifiPass, remoteHost, remotePath, remoteToken, rootCa;
 static bool tlsEnabled = true, wifiConfigured = false, bridgeConfigured = false;
 static volatile bool netConnected=false;
@@ -93,6 +102,9 @@ static uint32_t uploadRequestedAt=0;
 static const char *audioCachePath="/pocket-recording.pcm";
 // Never format an existing filesystem. Only initialize an entirely erased FAT partition.
 static bool initAudioStore() {
+#ifdef POCKET_TAIJI_KNOB32
+  return initRamAudioStore();
+#else
   const esp_partition_t *part=esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_DATA_FAT,"ffat");
   if(!part)return false;
   // wl_mount can initialize management sectors even when FAT mounting fails.
@@ -109,14 +121,15 @@ static bool initAudioStore() {
   if(!mounted)return false;
   const uint8_t pattern[]={0x50,0x54,0x54,0,0xff,0x55,0xaa,0x34};
   uint8_t verify[sizeof(pattern)]={0};
-  File probe=FFat.open(audioCachePath,FILE_WRITE);
+  PocketAudioFile probe=audioOpen(audioCachePath,FILE_WRITE);
   bool writable=probe && probe.write(pattern,sizeof(pattern))==sizeof(pattern);
   if(probe)probe.close();
-  probe=FFat.open(audioCachePath,FILE_READ);
+  probe=audioOpen(audioCachePath,FILE_READ);
   bool readable=probe && probe.read(verify,sizeof(verify))==sizeof(verify) && memcmp(pattern,verify,sizeof(pattern))==0;
-  if(probe)probe.close();FFat.remove(audioCachePath);
-  Serial.printf("AUDIO STORE CHECK write=%d read=%d free=%u\n",writable,readable,(unsigned)FFat.freeBytes());
+  if(probe)probe.close();audioRemove(audioCachePath);
+  Serial.printf("AUDIO STORE CHECK write=%d read=%d free=%u\n",writable,readable,(unsigned)audioFreeBytes());
   return writable && readable;
+#endif
 }
 static volatile int lastLocalKey=0;
 static volatile uint32_t lastLocalKeyAt=0;
@@ -190,7 +203,7 @@ void event(const char *action) {
 void telemetry(bool hello = false) {
   JsonDocument doc;
   doc["type"] = hello ? "hello" : "telemetry";
-  doc["firmware"] = "codex-pocket-0.11.1";
+  doc["firmware"] = POCKET_FIRMWARE;
   doc["wifiConnected"] = WiFi.status()==WL_CONNECTED;
   doc["usbConnected"] = HWCDC::isPlugged();
   float volts = Get_VbatVoltage();
@@ -206,8 +219,16 @@ void telemetry(bool hello = false) {
   doc["holdMs"]=holdMs;
   knobStatusJson(doc);
   doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  #ifdef POCKET_TAIJI_KNOB32
+  doc["displayBusy"]=0;doc["displayProfile"]="taiji360";
+#else
   doc["displayBusy"] = gpio_get_level(EPD_BUSY_PIN);
+#endif
+#ifdef POCKET_TAIJI_KNOB32
+  doc["displayTimeouts"] = 0;
+#else
   doc["displayTimeouts"] = EPD_GetBusyTimeouts();
+#endif
   doc["screenPhase"] = screenPhase;
   doc["fullRefreshes"] = fullRefreshes;
   doc["partialRefreshes"] = partialRefreshes;
@@ -232,13 +253,28 @@ void disconnectedImage() {
 void packet(const JsonDocument &doc) {
   String type = doc["type"] | "";
   if (type == "frame") {
+#ifdef POCKET_TAIJI_KNOB32
+    bool decodedRound=false;
+    const char *rle=doc["roundRle"]|"";
+    static uint8_t packedRound[10000],decodedRoundFrame[16200];size_t packedLength=0;
+    if(strlen(rle)>0 && strlen(rle)<=13336 && mbedtls_base64_decode(packedRound,sizeof(packedRound),&packedLength,(const unsigned char*)rle,strlen(rle))==0)
+      decodedRound=pocket::decodeBitmapRle(packedRound,packedLength,decodedRoundFrame,sizeof(decodedRoundFrame));
+#endif
     const char *data = doc["data"] | "";
-    uint8_t decoded[5000];
-    size_t length = 0;
-    if (mbedtls_base64_decode(decoded, sizeof(decoded), &length,
-        (const unsigned char *)data, strlen(data)) != 0 || length != 5000) return;
+    uint8_t decoded[5000];size_t length=0;
+    bool decodedLegacy=mbedtls_base64_decode(decoded,sizeof(decoded),&length,(const unsigned char*)data,strlen(data))==0 && length==5000;
+#ifdef POCKET_TAIJI_KNOB32
+    if(!decodedRound&&!decodedLegacy)return;
+#else
+    if(!decodedLegacy)return;
+#endif
     xSemaphoreTake(imageMutex, portMAX_DELAY);
-    memcpy(desiredImage, decoded, 5000);
+    if(decodedLegacy)memcpy(desiredImage, decoded, 5000);
+#ifdef POCKET_TAIJI_KNOB32
+    roundNative=decodedRound;if(decodedRound)memcpy(roundDesired,decodedRoundFrame,sizeof(roundDesired));
+    roundView=doc["roundView"]|0;roundSelection=doc["roundSelection"]|0;roundExpanded=doc["roundExpanded"]|false;roundBusy=doc["roundBusy"]|false;
+    roundCanRecord=doc["roundCanRecord"]|true;
+#endif
     pendingHash = doc["hash"] | "";
     imageDirty = true;
     xSemaphoreGive(imageMutex);
@@ -264,6 +300,7 @@ void packet(const JsonDocument &doc) {
   }
 }
 
+#ifndef POCKET_TAIJI_KNOB32
 void screenTask(void *) {
   screenPhase = 1;
   PortLvgl_Start_Init();
@@ -384,6 +421,8 @@ void screenTask(void *) {
   }
 }
 
+
+#endif
 // Capture never waits for TLS or the upload queue. The reserved FAT partition
 // holds at most one 20-second PCM clip; remove it after upload/cancel and on boot.
 void audioTask(void *) {
@@ -392,46 +431,46 @@ void audioTask(void *) {
     if(syntheticRequested) {
       syntheticRequested=false;
       if(!audioStoreReady || uploadPending || recording || !netConnected || !online)continue;
-      File test=FFat.open(audioCachePath,FILE_WRITE);
+      PocketAudioFile test=audioOpen(audioCachePath,FILE_WRITE);
       uint8_t silence[512]={0};bool ok=(bool)test;
       for(int n=0;ok && n<250;n++) {ok=test.write(silence,sizeof(silence))==sizeof(silence);vTaskDelay(1);}
       if(test)test.close();
-      if(!ok){FFat.remove(audioCachePath);audioFailure="AUDIO WRITE FAILED";setLocalUi(UiAudioError);continue;}
+      if(!ok){audioRemove(audioCachePath);audioFailure="AUDIO WRITE FAILED";setLocalUi(UiAudioError);continue;}
       captureCancelled=false;audioEndSent=false;audioBytes=128000;uploadProgress=0;uploadRetries=0;audioFailure="";syntheticUpload=true;
       uploadRequestedAt=millis();setLocalUi(UiSending);uploadPending=true;continue;
     }
     if(!captureRequested) {soundIdleTick();vTaskDelay(pdMS_TO_TICKS(5));continue;}
     captureRequested=false;
-    if(uploadPending || digitalRead(BOOT_BUTTON_PIN)!=LOW || digitalRead(PWR_BUTTON_PIN)==LOW || configModeActive || !netConnected || !online)continue;
+    if(uploadPending || pocketBootLevel()!=LOW || pocketPowerLevel()==LOW || configModeActive || !netConnected || !online)continue;
     captureCancelled=false;audioEndSent=false;audioBytes=0;uploadProgress=0;uploadRetries=0;syntheticUpload=false;audioFailure="";codecFailure=0;
-    File clip=audioStoreReady ? FFat.open(audioCachePath,FILE_WRITE) : File();
-    if(!clip || FFat.freeBytes()<recordSeconds*32000UL) {
+    PocketAudioFile clip=audioStoreReady ? audioOpen(audioCachePath,FILE_WRITE) : PocketAudioFile();
+    if(!clip || audioFreeBytes()<recordSeconds*32000UL) {
       if(clip)clip.close();audioFailure="AUDIO STORAGE FAILED";setLocalUi(UiAudioError);continue;
     }
     if(soundQueue)xQueueReset(soundQueue);
     // Play before capture, then discard buffered microphone audio containing it.
     if(soundEnabled&&soundVolume){soundPlay(SoundRecordStart);for(unsigned flush=0;flush<3;flush++)Codec_RecordData((uint8_t*)stereo,sizeof(stereo));}
-    if(captureCancelled||digitalRead(BOOT_BUTTON_PIN)!=LOW||digitalRead(PWR_BUTTON_PIN)==LOW||configModeActive){clip.close();FFat.remove(audioCachePath);continue;}
+    if(captureCancelled||pocketBootLevel()!=LOW||pocketPowerLevel()==LOW||configModeActive){clip.close();audioRemove(audioCachePath);continue;}
     recording=true;recordingStartedAt=millis();setLocalUi(UiRecording);
     Serial.printf("PTT START %lu mode=local-cache\n",(unsigned long)recordingStartedAt);
     uint32_t began=millis(),captured=0;bool failed=false;
-    while(recording && digitalRead(BOOT_BUTTON_PIN)==LOW && digitalRead(PWR_BUTTON_PIN)!=LOW && millis()-began<recordSeconds*1000UL && captured+sizeof(mono)<=recordSeconds*32000UL) {
+    while(recording && pocketBootLevel()==LOW && pocketPowerLevel()!=LOW && millis()-began<recordSeconds*1000UL && captured+sizeof(mono)<=recordSeconds*32000UL) {
       int result=Codec_RecordData((uint8_t*)stereo,sizeof(stereo));
       if(result!=ESP_OK) {codecFailure=result;audioFailure="MIC READ FAILED";failed=true;break;}
-      if(!recording || digitalRead(BOOT_BUTTON_PIN)!=LOW || digitalRead(PWR_BUTTON_PIN)==LOW)break;
+      if(!recording || pocketBootLevel()!=LOW || pocketPowerLevel()==LOW)break;
       for(int i=0;i<480;i++)mono[i]=stereo[2*i];
       if(clip.write((uint8_t*)mono,sizeof(mono))!=sizeof(mono)) {audioFailure="AUDIO WRITE FAILED";failed=true;break;}
       captured+=sizeof(mono);audioBytes=captured;
     }
     bool limit=millis()-began>=recordSeconds*1000UL || captured+sizeof(mono)>recordSeconds*32000UL;
-    if(digitalRead(PWR_BUTTON_PIN)==LOW || configModeActive)captureCancelled=true;
+    if(pocketPowerLevel()==LOW || configModeActive)captureCancelled=true;
     clip.close();recording=false;lastAudioEnd=millis();
     Serial.printf("PTT STOP %lu bytes=%lu error=%d cancelled=%d reason=%s heap=%u\n",(unsigned long)lastAudioEnd,(unsigned long)captured,failed,(int)captureCancelled,audioFailure,ESP.getFreeHeap());
     if(captureCancelled || failed || captured<6400) {
-      FFat.remove(audioCachePath);
+      audioRemove(audioCachePath);
       setLocalUi(captureCancelled?UiCancelled:failed?UiAudioError:UiTooShort);
     } else {
-      uploadRequestedAt=millis();setLocalUi(limit && digitalRead(BOOT_BUTTON_PIN)==LOW ? UiLimit : UiSending);
+      uploadRequestedAt=millis();setLocalUi(limit && pocketBootLevel()==LOW ? UiLimit : UiSending);
       uploadPending=true;soundEnqueue(SoundRecordEnd);
     }
   }
@@ -448,7 +487,7 @@ static uint8_t muLawEncode(int32_t sample) {
 
 // A failed partial frame is discarded by the gateway when this connection
 // closes. Keep the cached clip and start it from the beginning on reconnect.
-void retryUpload(File &clip,bool &started,const char *reason) {
+void retryUpload(PocketAudioFile &clip,bool &started,const char *reason) {
   if(clip)clip.close();started=false;
   if(netConnected)socketClient.disconnect();
   netConnected=false;online=false;remoteMulaw8k=false;
@@ -456,19 +495,19 @@ void retryUpload(File &clip,bool &started,const char *reason) {
     uploadProgress=0;audioFailure="";setLocalUi(UiSending);
     Serial.printf("UPLOAD RETRY attempt=%u cause=%s\n",uploadRetries,reason);
   } else {
-    FFat.remove(audioCachePath);uploadPending=false;audioFailure=reason;
+    audioRemove(audioCachePath);uploadPending=false;audioFailure=reason;
     setLocalUi(UiAudioError);Serial.printf("UPLOAD FAILED retries=%u cause=%s\n",uploadRetries,reason);
   }
 }
 
 void uploadTick() {
-  static File clip;static bool started=false;static bool compressed=false;
+  static PocketAudioFile clip;static bool started=false;static bool compressed=false;
   static uint32_t uploaded=0,wireBytes=0;
   if(!uploadPending)return;
   bool expired=millis()-uploadRequestedAt>300000UL;
   if(captureCancelled || expired) {
     if(started && netConnected)socketClient.sendTXT("{\"type\":\"audio_end\",\"cancelled\":true,\"error\":\"upload_cancelled\"}");
-    if(clip)clip.close();FFat.remove(audioCachePath);started=false;uploadPending=false;
+    if(clip)clip.close();audioRemove(audioCachePath);started=false;uploadPending=false;
     if(!captureCancelled)audioFailure="UPLOAD TIMEOUT";
     setLocalUi(captureCancelled?UiCancelled:UiAudioError);return;
   }
@@ -476,8 +515,8 @@ void uploadTick() {
   if(!netConnected || !online)return;
   bool sent=false;
   if(!started) {
-    clip=FFat.open(audioCachePath,FILE_READ);uploaded=0;wireBytes=0;
-    if(!clip || clip.size()!=audioBytes) {if(clip)clip.close();FFat.remove(audioCachePath);audioFailure="AUDIO SIZE MISMATCH";uploadPending=false;setLocalUi(UiAudioError);return;}
+    clip=audioOpen(audioCachePath,FILE_READ);uploaded=0;wireBytes=0;
+    if(!clip || clip.size()!=audioBytes) {if(clip)clip.close();audioRemove(audioCachePath);audioFailure="AUDIO SIZE MISMATCH";uploadPending=false;setLocalUi(UiAudioError);return;}
     compressed=remoteMulaw8k;
     JsonDocument start;start["type"]="audio_start";start["maxSeconds"]=recordSeconds;
     if(compressed)start["codec"]="mulaw8k";
@@ -512,14 +551,14 @@ void uploadTick() {
     if(syntheticUpload){end["cancelled"]=true;end["error"]="diagnostic_cancelled";}
     String json;serializeJson(end,json);sent=socketClient.sendTXT(json);
     if(sent){
-      clip.close();FFat.remove(audioCachePath);started=false;uploadPending=false;
+      clip.close();audioRemove(audioCachePath);started=false;uploadPending=false;
       Serial.printf("UPLOAD END pcm=%lu encoded=%lu ms=%lu retry=%u test=%d\n",(unsigned long)uploaded,(unsigned long)wireBytes,(unsigned long)(millis()-uploadRequestedAt),uploadRetries,(int)syntheticUpload);
       audioEndSent=true;if(localUi==UiSending)setLocalUi(syntheticUpload?UiIdle:UiRecognizing);
     }
   }
   if(!sent){
     socketClient.logTransport("upload-failed");
-    if(audioFailure[0]){if(clip)clip.close();FFat.remove(audioCachePath);started=false;uploadPending=false;setLocalUi(UiAudioError);socketClient.disconnect();}
+    if(audioFailure[0]){if(clip)clip.close();audioRemove(audioCachePath);started=false;uploadPending=false;setLocalUi(UiAudioError);socketClient.disconnect();}
     else{Serial.printf("UPLOAD TX FAILED cause=%s length=%u offset=%u\n",socketClient.lastSendFailure,(unsigned)socketClient.lastSendLength,(unsigned)socketClient.lastSendOffset);retryUpload(clip,started,"CLOUD SEND FAILED");}
   }
 }
@@ -599,7 +638,10 @@ void setupNetwork() {
       netConnected = true;
       JsonDocument hello;
       hello["type"]="hello"; hello["token"]=remoteToken;
-      hello["firmware"]="codex-pocket-0.11.1";
+      hello["firmware"]=POCKET_FIRMWARE;
+#ifdef POCKET_TAIJI_KNOB32
+      hello["displayProfile"]="taiji360";
+#endif
       hello["wifiConnected"]=WiFi.status()==WL_CONNECTED;
       hello["usbConnected"]=HWCDC::isPlugged();
       deviceLocationStatus(hello);
@@ -613,7 +655,7 @@ void setupNetwork() {
     } else if (type == WStype_ERROR) {
       Serial.printf("NET ERROR %.*s\n",(int)length,payload ? (char*)payload : "");
       socketClient.logTransport("error");
-    } else if (type == WStype_TEXT && length < 15000) {
+    } else if (type == WStype_TEXT && length < POCKET_FRAME_LIMIT) {
       JsonDocument msg;
       if (!deserializeJson(msg, payload, length) && String(msg["type"] | "") == "frame")
         packet(msg);
@@ -625,6 +667,10 @@ void setupNetwork() {
   socketClient.enableHeartbeat(15000, 3000, 2);
 }
 
+#ifdef POCKET_TAIJI_KNOB32
+#include "taiji_runtime.h"
+#endif
+
 void setup() {
   Serial.begin(115200);
   Serial.setTxTimeoutMs(100);
@@ -634,6 +680,7 @@ void setup() {
   imageMutex=xSemaphoreCreateMutex();
   netQueue=xQueueCreate(64, sizeof(char *));
   initDeviceLocation();
+#ifndef POCKET_TAIJI_KNOB32
   for (gpio_num_t pin : {EPD_DC_PIN,EPD_CS_PIN,EPD_SCK_PIN,EPD_MOSI_PIN,EPD_RST_PIN,EPD_BUSY_PIN,BOOT_BUTTON_PIN,PWR_BUTTON_PIN})
     gpio_hold_dis(pin);
   gpio_hold_dis(ESP32_I2C_SDA_PIN);
@@ -679,16 +726,20 @@ void setup() {
   auto pins=IO_EXPANDER_PIN_NUM_0|IO_EXPANDER_PIN_NUM_1|IO_EXPANDER_PIN_NUM_3|IO_EXPANDER_PIN_NUM_5;
   ESP_ERROR_CHECK(esp_io_expander_set_dir(exio,pins,IO_EXPANDER_OUTPUT));
   ESP_ERROR_CHECK(esp_io_expander_set_level(exio,pins,1));
+#endif
   BoardAdc_Init();
   Codec_StartInit();
   audioStoreReady=initAudioStore();
-  if(audioStoreReady)FFat.remove(audioCachePath);
-  Serial.printf("AUDIO STORE ready=%d free=%u\n",audioStoreReady,audioStoreReady ? (unsigned)FFat.freeBytes() : 0);
+  if(audioStoreReady)audioRemove(audioCachePath);
+  Serial.printf("AUDIO STORE ready=%d free=%u\n",audioStoreReady,audioStoreReady ? (unsigned)audioFreeBytes() : 0);
+#ifndef POCKET_TAIJI_KNOB32
   bootButton.setup(BOOT_BUTTON_PIN, INPUT_PULLUP, true);
   powerButton.setup(PWR_BUTTON_PIN, INPUT_PULLUP, true);
+#endif
   setupNetwork();
   initConfigPortal();
   soundQueue=xQueueCreate(6,sizeof(SoundRequest));
+#ifndef POCKET_TAIJI_KNOB32
   // holdMs is loaded from persisted configuration by initConfigPortal().
   bootButton.setDebounceMs(20);powerButton.setDebounceMs(20);
   bootButton.setClickMs(180);powerButton.setClickMs(180);
@@ -710,7 +761,9 @@ void setup() {
   powerButton.attachClick([](){ if(!configModeActive)event("b2_click"); });
   powerButton.attachLongPressStart([](){ if(configModeActive){portalCloseAt=millis()+100;return;}if(remoteRecommendationReader&&!recording&&!uploadPending){event("b2_long");return;}captureCancelled=true;recording=false;captureRequested=false;setLocalUi(UiCancelled);event("b2_long"); });
   // Do not interpret a held power-on button as a stop command.
-  while (digitalRead(PWR_BUTTON_PIN)==LOW) delay(10);
+  while (pocketPowerLevel()==LOW) delay(10);
+
+#endif
   initKnob();
   disconnectedImage();
   xTaskCreate(screenTask,"screen",8192,nullptr,1,nullptr);
@@ -728,15 +781,21 @@ void loop() {
   }}
   loopWifiScan();
   loopKnownWifi();
+#ifdef POCKET_TAIJI_KNOB32
+  taijiLoop();
+  bool bootDown=pocketBootLevel()==LOW,powerDown=pocketPowerLevel()==LOW;
+#else
   static uint32_t chordStart=0;
   static bool buttonGuard=false,chordDone=false;
-  bool bootDown=digitalRead(BOOT_BUTTON_PIN)==LOW,powerDown=digitalRead(PWR_BUTTON_PIN)==LOW;
+  bool bootDown=pocketBootLevel()==LOW,powerDown=pocketPowerLevel()==LOW;
   if(bootDown && powerDown) {
     if(!buttonGuard){bool wasCapturing=recording||captureRequested||localUi==UiCancelled;buttonGuard=true;chordStart=millis();chordDone=false;captureCancelled=true;recording=false;captureRequested=false;setLocalUi(wasCapturing?UiCancelled:UiIdle);}
     if(!chordDone && millis()-chordStart>=3000){startConfigPortal();chordDone=true;}
   }
   if(buttonGuard){if(!bootDown&&!powerDown){buttonGuard=false;bootButton.reset();powerButton.reset();}}
   else {bootButton.tick();powerButton.tick();}
+
+#endif
   loopConfigPortal();
   if(bootDown&&!powerDown&&!configModeActive&&remoteRecommendationUi&&localUi==UiIdle&&!recording&&!uploadPending&&netConnected&&online&&millis()-pressStartedAt>=250)setLocalUi(UiHold);
   // Short feedback expires locally even when the server is slow.
