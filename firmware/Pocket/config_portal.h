@@ -170,6 +170,7 @@ static void wifiScanResult(JsonDocument &out){
  for(int i=0;i<count && i<60;i++){
    String ssid=WiFi.SSID(i);if(!ssid.length())continue;
    JsonObject network=networks.add<JsonObject>();network["ssid"]=ssid;network["rssi"]=WiFi.RSSI(i);
+   network["authMode"]=(int)WiFi.encryptionType(i);
    network["saved"]=knownWifiFind(knownWifi,ssid.c_str())>=0;
    network["channel"]=WiFi.channel(i);network["secure"]=WiFi.encryptionType(i)!=WIFI_AUTH_OPEN;
  }
@@ -199,6 +200,7 @@ static void deviceStatus(JsonDocument &d){
  d["nativeEncoderCount"]=(uint32_t)taijiEncoderCount;d["nativeEncoderDirection"]=(int)taijiEncoderDirection;
  d["nativeEncoderEdges"]=(uint32_t)taijiEncoderEdges;d["nativeEncoderMode"]=(unsigned)taijiEncoderMode;
  d["nativeTouchCount"]=(uint32_t)taijiTouchCount;d["nativeTouchX"]=(unsigned)taijiTouchX;d["nativeTouchY"]=(unsigned)taijiTouchY;
+ d["nativeTouchRawX"]=(unsigned)taijiTouchRawX;d["nativeTouchRawY"]=(unsigned)taijiTouchRawY;d["displayRotation"]=taijiDisplayRotation();d["touchRotation"]=taijiTouchRotation();
  d["displayBrightness"]=(unsigned)taijiBrightness;d["backlightHz"]=screenPhase==4?ledcReadFreq(TAIJI_BACKLIGHT):0;
 #endif
  d["recording"]=(bool)recording;d["uploadPending"]=(bool)uploadPending;d["uploadProgress"]=(unsigned)uploadProgress;
@@ -258,6 +260,20 @@ static void loopUsbConfig(){
   if(!parsed || String(req["type"]|"")!="usb_config")continue;
   JsonDocument out,payload;out["id"]=req["id"];out["status"]=200;String method=req["method"]|"";
   if(method=="status")deviceStatus(payload);
+#ifdef POCKET_TAIJI_KNOB32
+  else if(method=="display_orientation"){
+   int display=req["body"]["displayRotation"]|((int)taijiDisplayRotation());
+   int touch=req["body"]["touchRotation"]|((int)taijiTouchRotation());
+   if(recording||captureRequested||uploadPending)out["status"]=configFailure(payload,409,"请先结束录音和上传");
+   else if((display!=0&&display!=180)||(touch!=0&&touch!=180))out["status"]=configFailure(payload,400,"方向目前支持 0 或 180 度");
+   else{
+    Preferences orientation;bool stored=orientation.begin("pocket",false);
+    if(stored){stored=orientation.putUInt("orientation",(display==180?1U:0U)|(touch==180?2U:0U))==sizeof(uint32_t);orientation.end();}
+    if(!stored)out["status"]=configFailure(payload,500,"方向保存失败，请重试");
+    else{taijiSetOrientation(display,touch);taijiOrientationChanged=true;imageDirty=true;payload["displayRotation"]=display;payload["touchRotation"]=touch;payload["message"]="方向已保存并即时应用";}
+   }
+  }
+#endif
   else if(method=="get")deviceConfig(payload);
   else if(method=="scan_start")out["status"]=startWifiScan(payload);
   else if(method=="scan_results")wifiScanResult(payload);

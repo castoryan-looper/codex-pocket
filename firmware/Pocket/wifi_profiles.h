@@ -49,6 +49,7 @@ static void describeKnownWifi(JsonDocument &doc){
   JsonArray list=doc["wifiProfiles"].to<JsonArray>();String current=WiFi.status()==WL_CONNECTED?WiFi.SSID():"";
   for(unsigned i=0;i<knownWifi.count;i++){
     JsonObject item=list.add<JsonObject>();item["ssid"]=knownWifi.profiles[i].ssid;
+    item["passwordSaved"]=knownWifi.profiles[i].password[0]!=0;
     item["preferred"]=strcmp(knownWifi.preferred,knownWifi.profiles[i].ssid)==0;
     item["connected"]=current==knownWifi.profiles[i].ssid;
   }

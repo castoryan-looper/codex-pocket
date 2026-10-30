@@ -7,11 +7,16 @@
 #include "esp_lcd_sh8601.h"
 #include "taiji_pins.h"
 #include "taiji_port.h"
+#include "round_geometry.h"
 extern "C" {extern const sh8601_lcd_init_cmd_t taiji_lcd_init_cmds[];extern const unsigned taiji_lcd_init_count;}
 static esp_lcd_panel_handle_t panel=nullptr;
 static SemaphoreHandle_t transferDone=nullptr;
 static uint16_t *stripe=nullptr;
 static bool ready=false;
+static volatile unsigned displayDegrees=180,touchDegrees=180;
+void taijiSetOrientation(unsigned display,unsigned touch){displayDegrees=display==180?180:0;touchDegrees=touch==180?180:0;}
+unsigned taijiDisplayRotation(){return displayDegrees;}
+unsigned taijiTouchRotation(){return touchDegrees;}
 static bool backlightPwm=false;
 static constexpr unsigned backlightHz=50000,backlightBits=9;
 static_assert(backlightHz*(1U<<backlightBits)<=40000000U,"Backlight exceeds S3 XTAL clock budget");
@@ -42,28 +47,34 @@ esp_err_t taijiDisplayInit(){
 }
 bool taijiDisplayReady(){return ready;}
 void taijiSetBrightness(unsigned percent){if(backlightPwm)ledcWrite(TAIJI_BACKLIGHT,min(percent,100U)*((1U<<backlightBits)-1)/100);else digitalWrite(TAIJI_BACKLIGHT,percent?HIGH:LOW);}
-bool taijiTouch(uint16_t &x,uint16_t &y){
+bool taijiTouch(uint16_t &x,uint16_t &y,uint16_t *rawX,uint16_t *rawY){
   Wire.beginTransmission(TAIJI_TOUCH_ADDRESS);Wire.write(0x02);
   if(Wire.endTransmission(false)!=0)return false;
   if(Wire.requestFrom((uint8_t)TAIJI_TOUCH_ADDRESS,(uint8_t)5)!=(size_t)5)return false;
   uint8_t data[5];for(unsigned i=0;i<5;i++)data[i]=Wire.read();
   if(!(data[0]&0x0f))return false;
   x=((data[1]&0x0f)<<8)|data[2];y=((data[3]&0x0f)<<8)|data[4];
-  return x<360&&y<360;
+  if(x>=360||y>=360)return false;
+  if(rawX)*rawX=x;if(rawY)*rawY=y;
+  pocket::RoundPoint logical=pocket::orientRoundPoint(x,y,360,touchDegrees);x=logical.x;y=logical.y;
+  return true;
 }
 esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection){
   if(!ready||!bits)return ESP_ERR_INVALID_STATE;
+  const unsigned rotation=displayDegrees;
   for(int top=0;top<360;top+=12){
     for(int row=0;row<12;row++)for(int x=0;x<360;x++){
-      int y=top+row,dx=x-180,dy=y-180;
+      int y=top+row;
+      pocket::RoundPoint logical=pocket::orientRoundPoint(x,y,360,rotation);
+      int lx=logical.x,ly=logical.y,dx=lx-180,dy=ly-180;
       uint16_t color=0x0843;
       if(dx*dx+dy*dy>178*178)color=0;
       else if(native){
-        bool ink=bits[y*45+x/8]&(0x80>>(x%8));
-        bool selected=selection>=0&&x>=54&&x<=306&&y>=114+selection*72&&y<174+selection*72;
+        bool ink=bits[ly*45+lx/8]&(0x80>>(lx%8));
+        bool selected=selection>=0&&lx>=54&&lx<=306&&ly>=114+selection*72&&ly<174+selection*72;
         color=ink?(selected?0xbff8:0xe7fc):0x0843;
-      }else if(x>=60&&x<300&&y>=60&&y<300){
-        int sx=(x-60)*200/240,sy=(y-60)*200/240;
+      }else if(lx>=60&&lx<300&&ly>=60&&ly<300){
+        int sx=(lx-60)*200/240,sy=(ly-60)*200/240;
         bool white=bits[sy*25+sx/8]&(0x80>>(sx%8));color=white?0x0843:0xe7fc;
       }
       stripe[row*360+x]=(color>>8)|(color<<8);

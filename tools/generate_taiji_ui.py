@@ -30,7 +30,7 @@ def main():
             if 8<=index<12 and y==292:continue
             f=ImageFont.truetype(path,size);d.text(((360-f.getlength(value))/2,y),value,font=f,fill=1)
         if 8<=index<12:
-            f=ImageFont.truetype(path,12);value='轻触右下进入设置'
+            f=ImageFont.truetype(path,12);value='转动旋钮或轻触右下设置'
             d.text(((360-f.getlength(value))/2,252),value,font=f,fill=1)
             d.rounded_rectangle((256,274,302,307),8,outline=1)
             d.text((264,282),'设置',font=ImageFont.truetype(path,14),fill=1)

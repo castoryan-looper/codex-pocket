@@ -2,13 +2,16 @@
 #include <Arduino.h>
 #ifdef POCKET_TAIJI_KNOB32
 #include <esp_heap_caps.h>
-#define POCKET_FIRMWARE "codex-pocket-taiji-0.12.4"
+#include "taiji_port.h"
+#define POCKET_FIRMWARE "codex-pocket-taiji-0.12.6"
 static volatile unsigned taijiBrightness=70;
 static volatile uint32_t taijiEncoderCount=0,taijiTouchCount=0;
 static volatile uint32_t taijiEncoderEdges=0;
 static volatile unsigned taijiEncoderMode=0;
 static volatile int taijiEncoderDirection=0;
 static volatile uint16_t taijiTouchX=0,taijiTouchY=0;
+static volatile uint16_t taijiTouchRawX=0,taijiTouchRawY=0;
+static volatile bool taijiOrientationChanged=false;
 static uint8_t *roundDesired=nullptr,*roundPacked=nullptr,*roundDecoded=nullptr;
 static bool initRoundBuffers(){
   uint8_t *buffer=(uint8_t*)heap_caps_calloc(42400,1,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);

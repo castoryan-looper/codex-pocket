@@ -3,6 +3,7 @@
 #include "round_interaction.h"
 #include "quadrature.h"
 #include "dual_mode_encoder.h"
+#include "round_geometry.h"
 #include "taiji_local_ui.h"
 static void taijiAscii(uint8_t *image,int px,int py,const String &text,int scale=1){
   for(unsigned n=0;n<text.length();n++){unsigned char c=text[n];if(c<32||c>126)c='?';
@@ -19,7 +20,8 @@ static void ARDUINO_ISR_ATTR taijiEncoderEdge(){
 static void screenTask(void*){
   screenPhase=1;esp_err_t initialized=taijiDisplayInit();
   if(initialized!=ESP_OK){Serial.printf("TAIJI DISPLAY ERROR %d\n",initialized);vTaskDelete(nullptr);return;}
-  Preferences displayPrefs;displayPrefs.begin("pocket",true);taijiBrightness=constrain(displayPrefs.getUInt("brightness",70),10U,100U);displayPrefs.end();taijiSetBrightness(taijiBrightness);
+  Preferences displayPrefs;displayPrefs.begin("pocket",true);taijiBrightness=constrain(displayPrefs.getUInt("brightness",70),10U,100U);
+  unsigned orientation=displayPrefs.getUInt("orientation",3);taijiSetOrientation((orientation&1)?180:0,(orientation&2)?180:0);displayPrefs.end();taijiSetBrightness(taijiBrightness);
   screenPhase=2;
   uint8_t *snapshot=(uint8_t*)heap_caps_malloc(16200,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
   if(!snapshot){Serial.println("TAIJI FRAME ALLOCATION FAILED");vTaskDelete(nullptr);return;}
@@ -72,12 +74,15 @@ static void taijiLoop(){
   portENTER_CRITICAL(&taijiEncoderLock);int steps=taijiEncoder.take(now);taijiEncoderMode=taijiEncoder.mode;portEXIT_CRITICAL(&taijiEncoderLock);
   for(int n=0;n<abs(steps);n++){int direction=steps>0?1:-1;
     taijiEncoderCount++;taijiEncoderDirection=direction;
-    if(configModeActive){taijiBrightness=constrain((int)taijiBrightness+direction*5,10,100);taijiSetBrightness(taijiBrightness);brightnessAt=now;imageDirty=true;}
+    if(pocket::openRoundSettingsOnTurn(online,netConnected,recording,captureRequested,uploadPending)&&!configModeActive)startConfigPortal(false);
+    if(configModeActive&&!recording&&!captureRequested&&!uploadPending){taijiBrightness=constrain((int)taijiBrightness+direction*5,10,100);taijiSetBrightness(taijiBrightness);brightnessAt=now;imageDirty=true;}
     if(!configModeActive&&!recording&&!captureRequested&&!uploadPending&&online&&netConnected)event(roundView==3?(direction>0?"round_next":"round_prev"):(direction>0?"knob_right":"knob_left"));
   }
-  uint16_t x=0,y=0;bool touched=taijiTouch(x,y);
+  uint16_t x=0,y=0,rawX=0,rawY=0;bool touched=taijiTouch(x,y,&rawX,&rawY);
+  if(taijiOrientationChanged){touchDown=false;micGesture=false;taijiMicHeld=false;if(!touched)taijiOrientationChanged=false;return;}
   if(touched){
     taijiTouchX=x;taijiTouchY=y;
+    taijiTouchRawX=rawX;taijiTouchRawY=rawY;
     currentX=x;currentY=y;
     if(!touchDown){touchDown=true;touchAt=now;startX=x;startY=y;
       taijiTouchCount++;

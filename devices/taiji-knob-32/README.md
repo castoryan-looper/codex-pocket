@@ -1,6 +1,6 @@
 # Taiji Knob 32 适配工作区
 
-版本：codex-pocket-taiji-0.12.4。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。S3 已实机刷入，USB/PSRAM 缓存/Wi-Fi 扫描通过；屏幕与输入体验仍在核对，尚未配置云端，不代表已完成真实语音全链路验收。其他同名硬件修订版需核对原理图。
+版本：codex-pocket-taiji-0.12.6。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。S3 已实机刷入，USB/PSRAM 缓存/Wi-Fi 扫描通过；屏幕与输入体验仍在核对，尚未配置云端，不代表已完成真实语音全链路验收。其他同名硬件修订版需核对原理图。
 
 ## 已实现的硬件无关部分
 
@@ -53,7 +53,7 @@ python -m esptool --chip esp32s3 --port COMx read-flash 0 0x1000000 backup/taiji
 
 应用文件在 build/taiji-knob32/app/Pocket.ino.bin，完整安装镜像为同目录 Pocket.ino.merged.bin。完整安装会写入该目标的分区表；已有 Pocket 升级需先核对实际活动应用分区，再决定只写应用分区。备份含私密信息，不提交 GitHub。
 
-0.12.4 包含首次未配网时先初始化网络栈再启动网页服务的修复。S3 圆屏缓存移至 PSRAM，背光采用适合默认 40 MHz XTAL 的 50 kHz / 9 位 PWM，并提供 GPIO 全亮回退。flash.ps1 在 S3 写入后调用 tools/start_s3_application.py 清除易失下载锁存并用看门狗启动，避免停留在 ROM 下载模式；只操作易失寄存器，不改写 eFuse。
+0.12.5 包含首次未配网时先初始化网络栈再启动网页服务的修复。S3 圆屏缓存移至 PSRAM，背光采用适合默认 40 MHz XTAL 的 50 kHz / 9 位 PWM，并提供 GPIO 全亮回退。flash.ps1 在 S3 写入后调用 tools/start_s3_application.py 清除易失下载锁存并用看门狗启动，避免停留在 ROM 下载模式；只操作易失寄存器，不改写 eFuse。
 
 USB status 另有 nativeEncoderEdges、nativeEncoderMode（0 待识别 / 1 方向脉冲 / 2 四相）、nativeEncoderCount、nativeEncoderDirection、nativeTouchCount、nativeTouchX/Y、displayBrightness、backlightHz、freePsram 和 maxFreeBlock 诊断字段。未配网时不能执行推荐或录音提交，应先通过屏幕右下“设置”进入配置，并在电脑的 USB 网页完成连接配置。
 
@@ -70,3 +70,15 @@ python -m unittest discover -s tools -p test_round_interaction.py -v
 ```
 
 测试直接编译实际头文件，覆盖确认与防重复执行、旋钮/滑动翻页及边界、录音结束/取消、离线配置、审批/草稿保护和触摸命中。主机测试不代替新设备驱动编译或实机验收。
+
+## 方向与离线输入（0.12.5）
+
+画面默认旋转 180°，触摸使用对应逻辑坐标；原生圆屏、旧画面兼容回退和高亮一起旋转。未联网时转动旋钮会进入配置并调整亮度，不再静默忽略。录音或上传期间保留输入保护。
+
+USB RPC display_orientation 接受 displayRotation / touchRotation（各为 0 或 180）。两者以同一个 NVS 值保存并立即应用；拒绝 90° 等无效参数。status 提供两项角度以及原始和逻辑触摸坐标。分别设置可用于不同触摸层方向的硬件校准。
+
+## 旋钮与配网诊断（0.12.6）
+
+方向脉冲最短有效宽度与空闲稳定等待均为 2 ms；仍过滤 1 ms 毛刺，连续 3 ms 脉冲与反转有主机测试，避免较快转动时漏步。每个有效刻度保持一个操作，不通过倍增跳过 A/B 或正文页面。
+
+USB status 的 wifiProfiles 增加 passwordSaved 布尔值，不返回密码；扫描结果增加 authMode，便于区分空密码、安全方式不兼容与认证失败。Wi-Fi 返回 210 时先核对热点安全方式及已保存密码；云端连接还需要导入对应服务器连接配置，单独保存 Wi-Fi 不代表云端已绑定。

@@ -3,16 +3,16 @@
 #include "quadrature.h"
 namespace pocket {
 // Supports the independent directional pulses used by the vendor demo and
-// full quadrature revisions. Commit only after a stable return to idle.
+// full quadrature revisions. Commit after 2 ms stable idle; accept short deliberate pulses at normal turning speed.
 class DualModeEncoder {
   Quadrature quad;uint8_t previous=3,channels=0;
   bool active=false,bothLow=false;uint32_t began=0,lastEdge=0;
   int direction=0,queued=0;
   void finish(uint32_t now){
-    if(!active||previous!=3||uint32_t(now-lastEdge)<6)return;
+    if(!active||previous!=3||uint32_t(now-lastEdge)<2)return;
     int result=0;
     if(bothLow&&direction){result=direction;mode=2;}
-    else if(!bothLow&&uint32_t(lastEdge-began)>=6&&(channels==1||channels==2)){
+    else if(!bothLow&&uint32_t(lastEdge-began)>=2&&(channels==1||channels==2)){
       result=channels==2?1:-1;mode=1;
     }
     queued+=result;if(queued>8)queued=8;if(queued< -8)queued=-8;
