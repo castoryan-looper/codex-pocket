@@ -2,21 +2,19 @@
 #include "taiji_port.h"
 #include "round_interaction.h"
 #include "quadrature.h"
+#include "dual_mode_encoder.h"
 #include "taiji_local_ui.h"
-static unsigned taijiBrightness=70;
 static void taijiAscii(uint8_t *image,int px,int py,const String &text,int scale=1){
   for(unsigned n=0;n<text.length();n++){unsigned char c=text[n];if(c<32||c>126)c='?';
     for(int y=0;y<12;y++)for(int x=0;x<7;x++)if(asciiFont[c-32][y]&(0x40>>x))
       for(int sy=0;sy<scale;sy++)for(int sx=0;sx<scale;sx++){int xx=px+(n*7+x)*scale+sx,yy=py+y*scale+sy;if(xx>=0&&xx<360&&yy>=0&&yy<360)image[yy*45+xx/8]|=0x80>>(xx%8);}
   }
 }
-static pocket::Quadrature taijiEncoder;
-static volatile int taijiSteps=0;
+static pocket::DualModeEncoder taijiEncoder;
 static portMUX_TYPE taijiEncoderLock=portMUX_INITIALIZER_UNLOCKED;
 static void ARDUINO_ISR_ATTR taijiEncoderEdge(){
   uint8_t state=(gpio_get_level((gpio_num_t)TAIJI_ENCODER_A)<<1)|gpio_get_level((gpio_num_t)TAIJI_ENCODER_B);
-  portENTER_CRITICAL_ISR(&taijiEncoderLock);taijiSteps+=taijiEncoder.step(state);
-  if(taijiSteps>8)taijiSteps=8;if(taijiSteps< -8)taijiSteps=-8;portEXIT_CRITICAL_ISR(&taijiEncoderLock);
+  portENTER_CRITICAL_ISR(&taijiEncoderLock);taijiEncoder.edge(state,millis());taijiEncoderEdges++;portEXIT_CRITICAL_ISR(&taijiEncoderLock);
 }
 static void screenTask(void*){
   screenPhase=1;esp_err_t initialized=taijiDisplayInit();
@@ -71,15 +69,18 @@ static void taijiLoop(){
   if(now-lastSample<5)return;lastSample=now;
   if(brightnessAt&&now-brightnessAt>1500){Preferences store;store.begin("pocket",false);store.putUInt("brightness",taijiBrightness);store.end();brightnessAt=0;}
   if(!encoderAttached){taijiEncoder.begin((digitalRead(TAIJI_ENCODER_A)<<1)|digitalRead(TAIJI_ENCODER_B));attachInterrupt(TAIJI_ENCODER_A,taijiEncoderEdge,CHANGE);attachInterrupt(TAIJI_ENCODER_B,taijiEncoderEdge,CHANGE);encoderAttached=true;}
-  portENTER_CRITICAL(&taijiEncoderLock);int steps=taijiSteps;taijiSteps=0;portEXIT_CRITICAL(&taijiEncoderLock);
+  portENTER_CRITICAL(&taijiEncoderLock);int steps=taijiEncoder.take(now);taijiEncoderMode=taijiEncoder.mode;portEXIT_CRITICAL(&taijiEncoderLock);
   for(int n=0;n<abs(steps);n++){int direction=steps>0?1:-1;
+    taijiEncoderCount++;taijiEncoderDirection=direction;
     if(configModeActive){taijiBrightness=constrain((int)taijiBrightness+direction*5,10,100);taijiSetBrightness(taijiBrightness);brightnessAt=now;imageDirty=true;}
     if(!configModeActive&&!recording&&!captureRequested&&!uploadPending&&online&&netConnected)event(roundView==3?(direction>0?"round_next":"round_prev"):(direction>0?"knob_right":"knob_left"));
   }
   uint16_t x=0,y=0;bool touched=taijiTouch(x,y);
   if(touched){
+    taijiTouchX=x;taijiTouchY=y;
     currentX=x;currentY=y;
     if(!touchDown){touchDown=true;touchAt=now;startX=x;startY=y;
+      taijiTouchCount++;
       initialHit=pocket::roundHit(x,y,360,roundView==0?pocket::RoundView::Choices:roundView==1?pocket::RoundView::Confirm:pocket::RoundView::Reader);
       if(!roundNative&&initialHit!=pocket::RoundHit::Mic&&initialHit!=pocket::RoundHit::Tools&&initialHit!=pocket::RoundHit::Back&&initialHit!=pocket::RoundHit::None)initialHit=pocket::RoundHit::Center;
       micStarted=false;micGesture=initialHit==pocket::RoundHit::Mic&&!configModeActive&&roundCanRecord&&!remoteVoiceBusy&&!remoteDraftReady&&!uploadPending&&online&&netConnected;

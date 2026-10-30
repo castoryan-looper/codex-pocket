@@ -9,12 +9,14 @@ class RoundInteractionTests(unittest.TestCase):
         rle=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/bitmap_rle.h').as_posix()
         encoder=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/quadrature.h').as_posix()
         audio=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/ram_audio_cache.h').as_posix()
+        dual=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/dual_mode_encoder.h').as_posix()
         code=r'''
 #include <cassert>
 #include "HEADER"
 #include "RLE"
 #include "ENCODER"
 #include "AUDIO"
+#include "DUAL"
 #include <vector>
 using namespace pocket;
 int main(){
@@ -38,6 +40,7 @@ int main(){
  assert(roundHit(180,140,360,RoundView::Choices)==RoundHit::A);
  assert(roundHit(180,220,360,RoundView::Choices)==RoundHit::B);
  assert(roundHit(180,290,360,RoundView::Choices)==RoundHit::Mic);
+ assert(roundHit(278,290,360,RoundView::Choices)==RoundHit::Tools);
  assert(roundHit(0,0,360,RoundView::Choices)==RoundHit::None);
  assert(roundHit(240,240,480,RoundView::Confirm)==RoundHit::Center);
  assert(roundHit(-1,180,360,RoundView::Choices)==RoundHit::None);
@@ -62,8 +65,17 @@ int main(){
  assert(reader.read(readback,4)==1);assert(reader.available()==0);reader.close();
  RamAudioFile retry(store,false);assert(retry.read(readback,4)==4);assert(readback[0]==1&&readback[3]==4);
  assert(retry.write(payload,4)==0);retry.close();assert(retry.read(readback,4)==0);
+ DualModeEncoder dual;dual.begin(3);
+ dual.edge(1,10);dual.edge(3,20);assert(dual.take(25)==0);assert(dual.take(26)==1);assert(dual.mode==1);
+ dual.edge(2,40);dual.edge(3,50);assert(dual.take(56)==-1);
+ dual.begin(3);dual.edge(1,10);dual.edge(0,12);dual.edge(2,14);dual.edge(3,16);assert(dual.take(22)==1);assert(dual.mode==2);
+ dual.edge(2,30);dual.edge(0,32);dual.edge(1,34);dual.edge(3,36);assert(dual.take(42)==-1);
+ dual.begin(3);dual.edge(1,10);dual.edge(3,11);assert(dual.take(17)==0);
+ dual.edge(1,20);dual.edge(3,21);dual.edge(1,22);dual.edge(0,24);dual.edge(2,26);dual.edge(3,28);assert(dual.take(34)==1);
+ dual.begin(3);dual.edge(0,10);dual.edge(3,20);assert(dual.take(30)==0);
+ dual.begin(3);dual.edge(1,0xfffffff0U);dual.edge(3,1);assert(dual.take(7)==1);
 }
-'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio)
+'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual)
         with tempfile.TemporaryDirectory() as folder:
             src=pathlib.Path(folder)/'round.cpp';src.write_text(code,encoding='utf-8')
             exe=pathlib.Path(folder)/'round.exe'

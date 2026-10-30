@@ -191,7 +191,16 @@ static void deviceStatus(JsonDocument &d){
  d["cloudConnected"]=wifi && netConnected && online;d["cloudTransportConnected"]=wifi && netConnected;d["host"]=remoteHost;d["port"]=remotePort;
  d["chip"]=ESP.getChipModel();d["cores"]=ESP.getChipCores();d["cpuMHz"]=getCpuFrequencyMhz();d["flashBytes"]=ESP.getFlashChipSize();
  d["freeHeap"]=ESP.getFreeHeap();d["largestFreeHeap"]=ESP.getMaxAllocHeap();d["uptimeSeconds"]=millis()/1000;d["mac"]=WiFi.macAddress();d["battery"]=localBattery;
- d["audioStorageReady"]=audioStoreReady;d["audioStorageFree"]=audioStoreReady?FFat.freeBytes():0;
+ d["audioStorageReady"]=audioStoreReady;d["audioStorageFree"]=audioStoreReady?audioFreeBytes():0;
+ d["screenPhase"]=(int)screenPhase;
+#ifdef POCKET_TAIJI_KNOB32
+ d["displayProfile"]="taiji360";d["displayReady"]=(screenPhase==4);
+ d["freePsram"]=ESP.getFreePsram();d["maxFreeBlock"]=ESP.getMaxAllocHeap();
+ d["nativeEncoderCount"]=(uint32_t)taijiEncoderCount;d["nativeEncoderDirection"]=(int)taijiEncoderDirection;
+ d["nativeEncoderEdges"]=(uint32_t)taijiEncoderEdges;d["nativeEncoderMode"]=(unsigned)taijiEncoderMode;
+ d["nativeTouchCount"]=(uint32_t)taijiTouchCount;d["nativeTouchX"]=(unsigned)taijiTouchX;d["nativeTouchY"]=(unsigned)taijiTouchY;
+ d["displayBrightness"]=(unsigned)taijiBrightness;d["backlightHz"]=screenPhase==4?ledcReadFreq(TAIJI_BACKLIGHT):0;
+#endif
  d["recording"]=(bool)recording;d["uploadPending"]=(bool)uploadPending;d["uploadProgress"]=(unsigned)uploadProgress;
  d["audioBytes"]=(unsigned)audioBytes;d["audioError"]=audioFailure;d["uploadRetries"]=(unsigned)uploadRetries;d["audioEndSent"]=(bool)audioEndSent;d["uploadCodec"]=remoteMulaw8k?"mulaw8k":"pcm16";d["syntheticUpload"]=(bool)syntheticUpload;
 }

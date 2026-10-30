@@ -256,9 +256,9 @@ void packet(const JsonDocument &doc) {
 #ifdef POCKET_TAIJI_KNOB32
     bool decodedRound=false;
     const char *rle=doc["roundRle"]|"";
-    static uint8_t packedRound[10000],decodedRoundFrame[16200];size_t packedLength=0;
-    if(strlen(rle)>0 && strlen(rle)<=13336 && mbedtls_base64_decode(packedRound,sizeof(packedRound),&packedLength,(const unsigned char*)rle,strlen(rle))==0)
-      decodedRound=pocket::decodeBitmapRle(packedRound,packedLength,decodedRoundFrame,sizeof(decodedRoundFrame));
+    size_t packedLength=0;
+    if(roundDesired&&roundPacked&&roundDecoded&&strlen(rle)>0 && strlen(rle)<=13336 && mbedtls_base64_decode(roundPacked,10000,&packedLength,(const unsigned char*)rle,strlen(rle))==0)
+      decodedRound=pocket::decodeBitmapRle(roundPacked,packedLength,roundDecoded,16200);
 #endif
     const char *data = doc["data"] | "";
     uint8_t decoded[5000];size_t length=0;
@@ -271,7 +271,7 @@ void packet(const JsonDocument &doc) {
     xSemaphoreTake(imageMutex, portMAX_DELAY);
     if(decodedLegacy)memcpy(desiredImage, decoded, 5000);
 #ifdef POCKET_TAIJI_KNOB32
-    roundNative=decodedRound;if(decodedRound)memcpy(roundDesired,decodedRoundFrame,sizeof(roundDesired));
+    roundNative=decodedRound;if(decodedRound)memcpy(roundDesired,roundDecoded,16200);
     roundView=doc["roundView"]|0;roundSelection=doc["roundSelection"]|0;roundExpanded=doc["roundExpanded"]|false;roundBusy=doc["roundBusy"]|false;
     roundCanRecord=doc["roundCanRecord"]|true;
 #endif
@@ -621,13 +621,15 @@ void setupNetwork() {
   prefs.end();
   loadKnownWifi();
   bridgeConfigured = remoteHost.length() && remoteToken.length() && (!tlsEnabled || rootCa.length());
+  // WebServer is started even before credentials exist (USB/AP enrollment).
+  // Initialize lwIP before that first listener, including an empty NVS device.
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
   if (!wifiConfigured) return;
   WiFi.onEvent([](WiFiEvent_t event,WiFiEventInfo_t info){
     if(event==ARDUINO_EVENT_WIFI_STA_DISCONNECTED){lastWifiDisconnectReason=info.wifi_sta_disconnected.reason;netConnected=false;online=false;remoteMulaw8k=false;Serial.printf("WIFI DISCONNECT reason=%d\n",(int)lastWifiDisconnectReason);imageDirty=true;}
     else if(event==ARDUINO_EVENT_WIFI_STA_GOT_IP)lastWifiDisconnectReason=0;
   });
-  WiFi.mode(WIFI_STA);
-  WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
   WiFi.setSleep(false);
   wifiStartKnown(knownWifiFind(knownWifi,knownWifi.preferred));
@@ -640,7 +642,7 @@ void setupNetwork() {
       hello["type"]="hello"; hello["token"]=remoteToken;
       hello["firmware"]=POCKET_FIRMWARE;
 #ifdef POCKET_TAIJI_KNOB32
-      hello["displayProfile"]="taiji360";
+      if(roundDesired)hello["displayProfile"]="taiji360";
 #endif
       hello["wifiConnected"]=WiFi.status()==WL_CONNECTED;
       hello["usbConnected"]=HWCDC::isPlugged();
@@ -679,6 +681,9 @@ void setup() {
   Serial.println("POCKET_BOOT: initializing hardware");
   imageMutex=xSemaphoreCreateMutex();
   netQueue=xQueueCreate(64, sizeof(char *));
+#ifdef POCKET_TAIJI_KNOB32
+  if(!initRoundBuffers())Serial.println("TAIJI ROUND BUFFER ALLOCATION FAILED");
+#endif
   initDeviceLocation();
 #ifndef POCKET_TAIJI_KNOB32
   for (gpio_num_t pin : {EPD_DC_PIN,EPD_CS_PIN,EPD_SCK_PIN,EPD_MOSI_PIN,EPD_RST_PIN,EPD_BUSY_PIN,BOOT_BUTTON_PIN,PWR_BUTTON_PIN})

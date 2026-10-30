@@ -7,6 +7,10 @@ on:
       - firmware/boards/**
       - firmware/common/**
       - tools/test_round_interaction.py
+      - tools/test_first_boot.py
+      - tools/test_taiji_backlight.py
+      - tools/start_s3_application.py
+      - tools/test_start_s3_application.py
       - build.ps1
       - tools/test_upload_frames.py
       - tools/test_sound_feedback.py
@@ -27,6 +31,10 @@ on:
       - firmware/boards/**
       - firmware/common/**
       - tools/test_round_interaction.py
+      - tools/test_first_boot.py
+      - tools/test_taiji_backlight.py
+      - tools/start_s3_application.py
+      - tools/test_start_s3_application.py
       - build.ps1
       - tools/test_upload_frames.py
       - tools/test_sound_feedback.py
@@ -56,6 +64,9 @@ jobs:
       - run: |
           python -m unittest discover -s tools -p test_upload_frames.py -v
           python -m unittest discover -s tools -p test_round_interaction.py -v
+          python -m unittest discover -s tools -p test_first_boot.py -v
+          python -m unittest discover -s tools -p test_taiji_backlight.py -v
+          python -m unittest discover -s tools -p test_start_s3_application.py -v
           python -m unittest discover -s tools -p test_sound_feedback.py -v
           python -m unittest discover -s tools -p test_knob_gatt.py -v
           python -m unittest discover -s tools -p test_knob_hid.py -v

@@ -1,10 +1,10 @@
 # Taiji Knob 32 适配工作区
 
-版本：codex-pocket-taiji-0.12.0。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。编译通过不代表已完成用户这台设备的实机验收；其他同名硬件修订版需核对原理图。
+版本：codex-pocket-taiji-0.12.4。按用户确认的 ESP32-S3、1.8 英寸 360×360 规格，以 Waveshare ESP32-S3-Knob-Touch-LCD-1.8 原厂 Demo 为板级参考。屏幕、触摸、旋钮、PDM 麦克风和 I2S 输出已接入共享固件，构建目标为 taiji-knob32。S3 已实机刷入，USB/PSRAM 缓存/Wi-Fi 扫描通过；屏幕与输入体验仍在核对，尚未配置云端，不代表已完成真实语音全链路验收。其他同名硬件修订版需核对原理图。
 
 ## 已实现的硬件无关部分
 
-firmware/common/round_interaction.h 定义交互策略与圆形命中区域，板级 taiji_runtime.h 使用相同触摸区域并通过现有队列发送明确操作。firmware/common/quadrature.h 解码完整四相步进，旋钮中断只计数，不进行网络或屏幕操作；翻页和提交仍由现有云端操作锁保护。
+firmware/common/round_interaction.h 定义交互策略与圆形命中区域，板级 taiji_runtime.h 使用相同触摸区域并通过现有队列发送明确操作。firmware/common/dual_mode_encoder.h 自动兼容原厂方向脉冲与四相编码，低电平脉冲与稳定回到空闲后才记步，旋钮中断只计数，不进行网络或屏幕操作；翻页和提交仍由现有云端操作锁保护。
 
 - 主屏同时放 A/B，短行动词优先；目标最多一行，完整内容按需查看。
 - 旋钮浏览，触摸 A/B 或中心打开单屏确认，再触摸“开始执行”提交；不假设旋钮有按压开关。
@@ -52,6 +52,10 @@ python -m esptool --chip esp32s3 --port COMx read-flash 0 0x1000000 backup/taiji
 ```
 
 应用文件在 build/taiji-knob32/app/Pocket.ino.bin，完整安装镜像为同目录 Pocket.ino.merged.bin。完整安装会写入该目标的分区表；已有 Pocket 升级需先核对实际活动应用分区，再决定只写应用分区。备份含私密信息，不提交 GitHub。
+
+0.12.4 包含首次未配网时先初始化网络栈再启动网页服务的修复。S3 圆屏缓存移至 PSRAM，背光采用适合默认 40 MHz XTAL 的 50 kHz / 9 位 PWM，并提供 GPIO 全亮回退。flash.ps1 在 S3 写入后调用 tools/start_s3_application.py 清除易失下载锁存并用看门狗启动，避免停留在 ROM 下载模式；只操作易失寄存器，不改写 eFuse。
+
+USB status 另有 nativeEncoderEdges、nativeEncoderMode（0 待识别 / 1 方向脉冲 / 2 四相）、nativeEncoderCount、nativeEncoderDirection、nativeTouchCount、nativeTouchX/Y、displayBrightness、backlightHz、freePsram 和 maxFreeBlock 诊断字段。未配网时不能执行推荐或录音提交，应先通过屏幕右下“设置”进入配置，并在电脑的 USB 网页完成连接配置。
 
 进入设置后屏幕显示 USB 公网管理页或 AP 地址、KEY，旋钮调节亮度，停止旋转 1.5 秒后保存，轻触退出。录音、断网和识别中的本地画面同样针对圆屏生成，不出现 BOOT/PWR 的旧按钮提示。
 

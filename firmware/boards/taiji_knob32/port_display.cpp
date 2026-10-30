@@ -12,6 +12,9 @@ static esp_lcd_panel_handle_t panel=nullptr;
 static SemaphoreHandle_t transferDone=nullptr;
 static uint16_t *stripe=nullptr;
 static bool ready=false;
+static bool backlightPwm=false;
+static constexpr unsigned backlightHz=50000,backlightBits=9;
+static_assert(backlightHz*(1U<<backlightBits)<=40000000U,"Backlight exceeds S3 XTAL clock budget");
 static bool IRAM_ATTR onTransfer(esp_lcd_panel_io_handle_t,esp_lcd_panel_io_event_data_t*,void*){
   BaseType_t wake=pdFALSE;xSemaphoreGiveFromISR(transferDone,&wake);return wake==pdTRUE;
 }
@@ -33,10 +36,12 @@ esp_err_t taijiDisplayInit(){
   result=esp_lcd_new_panel_sh8601(io,&device,&panel);if(result!=ESP_OK)return result;
   result=esp_lcd_panel_reset(panel);if(result!=ESP_OK)return result;
   result=esp_lcd_panel_init(panel);if(result!=ESP_OK)return result;
-  ledcAttach(TAIJI_BACKLIGHT,50000,10);taijiSetBrightness(70);ready=true;return ESP_OK;
+  backlightPwm=ledcAttach(TAIJI_BACKLIGHT,backlightHz,backlightBits);
+  if(!backlightPwm){pinMode(TAIJI_BACKLIGHT,OUTPUT);digitalWrite(TAIJI_BACKLIGHT,HIGH);Serial.println("TAIJI BACKLIGHT PWM FAILED: full brightness fallback");}
+  taijiSetBrightness(70);ready=true;return ESP_OK;
 }
 bool taijiDisplayReady(){return ready;}
-void taijiSetBrightness(unsigned percent){ledcWrite(TAIJI_BACKLIGHT,min(percent,100U)*1023/100);}
+void taijiSetBrightness(unsigned percent){if(backlightPwm)ledcWrite(TAIJI_BACKLIGHT,min(percent,100U)*((1U<<backlightBits)-1)/100);else digitalWrite(TAIJI_BACKLIGHT,percent?HIGH:LOW);}
 bool taijiTouch(uint16_t &x,uint16_t &y){
   Wire.beginTransmission(TAIJI_TOUCH_ADDRESS);Wire.write(0x02);
   if(Wire.endTransmission(false)!=0)return false;
