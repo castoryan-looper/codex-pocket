@@ -1,6 +1,6 @@
 # Codex Pocket：ESP32 随身终端
 
-支持两个独立构建目标：Waveshare ESP32-C6-ePaper-1.54（200×200 墨水屏，固件 **0.11.1**），以及 [Taiji Knob 32 / ESP32-S3 1.8 英寸旋钮圆屏](devices/taiji-knob-32/README.md)（360×360，固件 **0.12.5**）。S3 已实机刷入并验证 USB、录音缓存与 Wi-Fi 扫描；显示与输入体验仍在核对。
+支持两个独立构建目标：Waveshare ESP32-C6-ePaper-1.54（200×200 墨水屏，固件 **0.11.1**），以及 [Taiji Knob 32 / ESP32-S3 1.8 英寸旋钮圆屏](devices/taiji-knob-32/README.md)（360×360，固件 **0.13.0**）。S3 已实机刷入并验证 USB、Wi-Fi/云端连接和录音上传；圆屏提供彩色 A/B 卡片、CODEX 标识、扩大语音按钮与方向脉冲旋钮输入。
 
 本仓库保存设备固件、USB/AP 管理页面和设备端测试。云端网关、目标推荐及部署由 [codex-pocket-cloud](https://github.com/castoryan-looper/codex-pocket-cloud) 维护。本次将此前集中在 cloud 仓库中的设备更新同步回来；来源提交及固件文件哈希记录在 firmware-source.json。两个仓库目前不是自动双向同步关系。
 
