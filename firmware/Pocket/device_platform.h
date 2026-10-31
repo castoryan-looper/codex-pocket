@@ -3,7 +3,7 @@
 #ifdef POCKET_TAIJI_KNOB32
 #include <esp_heap_caps.h>
 #include "taiji_port.h"
-#define POCKET_FIRMWARE "codex-pocket-taiji-0.15.0"
+#define POCKET_FIRMWARE "codex-pocket-taiji-0.15.1"
 static volatile unsigned taijiBrightness=70;
 static volatile uint32_t taijiEncoderCount=0,taijiTouchCount=0;
 static volatile uint32_t taijiEncoderEdges=0;

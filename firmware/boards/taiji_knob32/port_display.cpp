@@ -16,7 +16,12 @@ static SemaphoreHandle_t transferDone=nullptr;
 static uint16_t *stripe=nullptr;
 static bool ready=false;
 static uint16_t *cardRgb[3]={};
-static volatile unsigned lastRenderUs=0,motionFrames=0;
+static uint16_t circleLeft[360];
+static unsigned cacheDegrees=180;
+static volatile unsigned lastRenderUs=0,motionFrames=0,lastComposeUs=0,lastTransferUs=0;
+unsigned taijiComposeMicros(){return lastComposeUs;}
+unsigned taijiTransferMicros(){return lastTransferUs;}
+unsigned taijiCachedRotation(){return cacheDegrees;}
 unsigned taijiLastRenderMicros(){return lastRenderUs;}
 unsigned taijiMotionFrames(){return motionFrames;}
 static volatile unsigned displayDegrees=180,touchDegrees=180;
@@ -50,6 +55,7 @@ esp_err_t taijiDisplayInit(){
   result=esp_lcd_panel_init(panel);if(result!=ESP_OK)return result;
   backlightPwm=ledcAttach(TAIJI_BACKLIGHT,backlightHz,backlightBits);
   if(!backlightPwm){pinMode(TAIJI_BACKLIGHT,OUTPUT);digitalWrite(TAIJI_BACKLIGHT,HIGH);Serial.println("TAIJI BACKLIGHT PWM FAILED: full brightness fallback");}
+  for(int y=0;y<360;y++){int x=0,dy=y-180;while(x<360&&((x-180)*(x-180)+dy*dy>178*178))x++;circleLeft[y]=x;}
   taijiSetBrightness(70);ready=true;return ESP_OK;
 }
 bool taijiDisplayReady(){return ready;}
@@ -91,26 +97,39 @@ esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection,int view){
 
 void taijiCacheFrame(unsigned slot,const uint8_t *bits,int selection,int view){
  if(slot>=3||!cardRgb[slot]||!bits)return;
- for(int y=0;y<360;y++)for(int x=0;x<360;x++){
-  bool ink=bits[y*45+x/8]&(0x80>>(x%8));uint16_t c=pocket::roundTheme(x,y,ink,view,selection);
-  cardRgb[slot][y*360+x]=(c>>8)|(c<<8);
+ unsigned rotation=slot==0?displayDegrees:cacheDegrees;if(slot==0)cacheDegrees=rotation;
+ for(int y=0;y<360;y++){
+  int physicalY=rotation==180?359-y:y;uint16_t *dest=cardRgb[slot]+physicalY*360;
+  uint16_t background=pocket::roundTheme(180,y,false,view,selection);if(!background)background=pocket::rgb565(9,20,30);
+  for(int x=0;x<360;x++){
+   bool ink=bits[y*45+x/8]&(0x80>>(x%8));uint16_t c=pocket::roundTheme(x,y,ink,view,selection);if(!c)c=background;
+   dest[rotation==180?359-x:x]=(c>>8)|(c<<8);
+  }
  }
 }
 esp_err_t taijiPresentCached(int offset,bool previous,bool next){
  if(!ready||!cardRgb[0])return ESP_ERR_INVALID_STATE;
- uint32_t started=micros();unsigned rotation=displayDegrees;
- for(int top=0;top<360;top+=12){
-  for(int row=0;row<12;row++)for(int x=0;x<360;x++){
-   auto point=pocket::orientRoundPoint(x,top+row,360,rotation);int lx=point.x,ly=point.y;
-   auto sample=pocket::streamSample(ly,offset,previous,next);unsigned slot=sample.slot;int sy=sample.row;
-   uint16_t color=slot<3&&sy>=0&&sy<360?cardRgb[slot][sy*360+lx]:0;
-   if(!color){uint16_t dark=pocket::rgb565(9,20,30);color=(dark>>8)|(dark<<8);}
-   int dx=lx-180,dy=ly-180;if(dx*dx+dy*dy>178*178)color=0;
-   stripe[row*360+x]=color;
+ uint32_t started=micros(),compose=0,transfer=0;unsigned rotation=cacheDegrees;
+ int first=offset?(rotation==180?360-pocket::StreamBottom:pocket::StreamTop):0;
+ int last=offset?(rotation==180?360-pocket::StreamTop:pocket::StreamBottom):360;
+ for(int top=first;top<last;top+=12){
+  uint32_t at=micros();int rows=min(12,last-top);
+  for(int row=0;row<rows;row++){
+   int physicalY=top+row,logicalY=rotation==180?359-physicalY:physicalY;
+   auto sample=pocket::streamSample(logicalY,offset,previous,next);
+   uint16_t *dest=stripe+row*360;
+   if(sample.slot<3){int sourceY=rotation==180?359-sample.row:sample.row;memcpy(dest,cardRgb[sample.slot]+sourceY*360,720);}
+   else{uint16_t fill=cardRgb[0][physicalY*360];for(int x=0;x<360;x++)dest[x]=fill;}
+   int left=circleLeft[logicalY],right=360-left;
+   if(left>=360){memset(dest,0,720);continue;}
+   if(rotation==180){int oldLeft=left;left=359-right;right=359-oldLeft;}
+   memset(dest,0,left*2);memset(dest+right+1,0,(359-right)*2);
   }
+  compose+=micros()-at;at=micros();
   while(xSemaphoreTake(transferDone,0)==pdTRUE){}
-  esp_err_t result=esp_lcd_panel_draw_bitmap(panel,0,top,360,top+12,stripe);if(result!=ESP_OK)return result;
+  esp_err_t result=esp_lcd_panel_draw_bitmap(panel,0,top,360,top+rows,stripe);if(result!=ESP_OK)return result;
   if(xSemaphoreTake(transferDone,pdMS_TO_TICKS(1000))!=pdTRUE){ready=false;return ESP_ERR_TIMEOUT;}
+  transfer+=micros()-at;
  }
- lastRenderUs=micros()-started;motionFrames++;return ESP_OK;
+ lastRenderUs=micros()-started;lastComposeUs=compose;lastTransferUs=transfer;motionFrames++;return ESP_OK;
 }

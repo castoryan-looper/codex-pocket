@@ -36,7 +36,7 @@ static void screenTask(void*){
   uint8_t *snapshot=(uint8_t*)heap_caps_malloc(16200,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT),*scratch=(uint8_t*)heap_caps_malloc(16200,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
   if(!snapshot||!scratch){Serial.println("TAIJI FRAME ALLOCATION FAILED");vTaskDelete(nullptr);return;}
   int previousLocal=-100,previousSeconds=-1,lastOffset=0,lastPhase=0,lastSelection=-9;bool previousConfig=false,denseShown=false,hasMask=false;
-  uint32_t batteryAt=0,preparedRevision[2]={};char cachedToken[33]={};bool previousReady=false,nextReady=false;
+  uint32_t batteryAt=0,preparedRevision[2]={};char cachedToken[33]={};unsigned lastOrientation=999;bool previousReady=false,nextReady=false;
   for(;;){
     if(localBattery<0||millis()-batteryAt>30000){localBattery=Get_Batterylevel();batteryAt=millis();}
     int ui=localUi;int seconds=recording?(millis()-recordingStartedAt)/1000:-1;
@@ -49,7 +49,8 @@ static void screenTask(void*){
       bool native=roundNative&&online&&netConnected&&ui==UiIdle&&!configModeActive;
       int view=roundView,selected=(view==0||view==4)?roundSelection:-1;
       bool dense=native&&view==4&&streamLayout==2;
-      bool same=dense&&denseShown&&hasMask&&lastSelection==selected&&!memcmp(snapshot,roundDesired,16200);
+      bool orientationChanged=lastOrientation!=taijiDisplayRotation();
+      bool same=dense&&!orientationChanged&&denseShown&&hasMask&&lastSelection==selected&&!memcmp(snapshot,roundDesired,16200);
       memcpy(snapshot,native?roundDesired:desiredImage,native?16200:5000);
       String hash=pendingHash;imageDirty=false;char snapshotToken[33];strlcpy(snapshotToken,streamToken,sizeof(snapshotToken));xSemaphoreGive(imageMutex);
       if(configModeActive){
@@ -69,8 +70,8 @@ static void screenTask(void*){
       screenPhase=result==ESP_OK?4:5;
       if(result==ESP_OK){
         bool changed=strcmp(cachedToken,snapshotToken)!=0;
-        denseShown=dense;hasMask=dense;lastSelection=selected;
-        if(dense){strlcpy(cachedToken,snapshotToken,33);if(changed){previousReady=nextReady=false;preparedRevision[0]=preparedRevision[1]=0;}}
+        denseShown=dense;hasMask=dense;lastSelection=selected;lastOrientation=dense?taijiCachedRotation():taijiDisplayRotation();
+        if(dense){strlcpy(cachedToken,snapshotToken,33);if(changed||orientationChanged){previousReady=nextReady=false;preparedRevision[0]=preparedRevision[1]=0;}}
         else{cachedToken[0]=0;previousReady=nextReady=false;}
         xSemaphoreTake(imageMutex,portMAX_DELAY);
         bool keepDrag=dense&&phase!=3&&streamVisualPhase!=0;

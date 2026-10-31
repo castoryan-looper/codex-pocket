@@ -130,7 +130,7 @@ static bool portalAuthorized() {
 static int configFailure(JsonDocument &out,int code,const char *error){out["error"]=error;return code;}
 static void deviceConfig(JsonDocument &d){
 #ifdef POCKET_TAIJI_KNOB32
- d["displayProfile"]="taiji360";d["taskStream"]=1;d["taskStreamVisible"]=shownStreamToken[0]!=0;d["streamLayout"]=(int)streamLayout;d["streamMotionFrames"]=taijiMotionFrames();d["streamRenderMicros"]=taijiLastRenderMicros();
+ d["displayProfile"]="taiji360";d["taskStream"]=1;d["taskStreamVisible"]=shownStreamToken[0]!=0;d["streamLayout"]=(int)streamLayout;d["streamMotionFrames"]=taijiMotionFrames();d["streamRenderMicros"]=taijiLastRenderMicros();d["streamComposeMicros"]=taijiComposeMicros();d["streamTransferMicros"]=taijiTransferMicros();
 #endif
  soundStatus(d);
  describeKnownWifi(d);
@@ -195,7 +195,7 @@ static void deviceStatus(JsonDocument &d){
  d["audioStorageReady"]=audioStoreReady;d["audioStorageFree"]=audioStoreReady?audioFreeBytes():0;
  d["screenPhase"]=(int)screenPhase;
 #ifdef POCKET_TAIJI_KNOB32
- d["displayProfile"]="taiji360";d["taskStream"]=1;d["taskStreamVisible"]=shownStreamToken[0]!=0;d["streamLayout"]=(int)streamLayout;d["streamMotionFrames"]=taijiMotionFrames();d["streamRenderMicros"]=taijiLastRenderMicros();d["displayReady"]=(screenPhase==4);
+ d["displayProfile"]="taiji360";d["taskStream"]=1;d["taskStreamVisible"]=shownStreamToken[0]!=0;d["streamLayout"]=(int)streamLayout;d["streamMotionFrames"]=taijiMotionFrames();d["streamRenderMicros"]=taijiLastRenderMicros();d["streamComposeMicros"]=taijiComposeMicros();d["streamTransferMicros"]=taijiTransferMicros();d["displayReady"]=(screenPhase==4);
  d["freePsram"]=ESP.getFreePsram();d["maxFreeBlock"]=ESP.getMaxAllocHeap();
  d["nativeEncoderCount"]=(uint32_t)taijiEncoderCount;d["nativeEncoderDirection"]=(int)taijiEncoderDirection;
  d["nativeEncoderEdges"]=(uint32_t)taijiEncoderEdges;d["nativeEncoderMode"]=(unsigned)taijiEncoderMode;
