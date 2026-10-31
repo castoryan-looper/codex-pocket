@@ -9,11 +9,16 @@
 #include "taiji_port.h"
 #include "round_geometry.h"
 #include "round_theme.h"
+#include "stream_motion.h"
 extern "C" {extern const sh8601_lcd_init_cmd_t taiji_lcd_init_cmds[];extern const unsigned taiji_lcd_init_count;}
 static esp_lcd_panel_handle_t panel=nullptr;
 static SemaphoreHandle_t transferDone=nullptr;
 static uint16_t *stripe=nullptr;
 static bool ready=false;
+static uint16_t *cardRgb[3]={};
+static volatile unsigned lastRenderUs=0,motionFrames=0;
+unsigned taijiLastRenderMicros(){return lastRenderUs;}
+unsigned taijiMotionFrames(){return motionFrames;}
 static volatile unsigned displayDegrees=180,touchDegrees=180;
 void taijiSetOrientation(unsigned display,unsigned touch){displayDegrees=display==180?180:0;touchDegrees=touch==180?180:0;}
 unsigned taijiDisplayRotation(){return displayDegrees;}
@@ -30,7 +35,8 @@ esp_err_t taijiDisplayInit(){
   Wire.beginTransmission(TAIJI_TOUCH_ADDRESS);Wire.write(0x00);Wire.write(0x00);Wire.endTransmission();
   transferDone=xSemaphoreCreateBinary();
   stripe=(uint16_t*)heap_caps_malloc(360*12*2,MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);
-  if(!transferDone||!stripe)return ESP_ERR_NO_MEM;
+  for(auto &frame:cardRgb)frame=(uint16_t*)heap_caps_malloc(360*360*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+  if(!transferDone||!stripe||!cardRgb[0]||!cardRgb[1]||!cardRgb[2])return ESP_ERR_NO_MEM;
   spi_bus_config_t bus=SH8601_PANEL_BUS_QSPI_CONFIG(TAIJI_LCD_CLK,TAIJI_LCD_D0,TAIJI_LCD_D1,TAIJI_LCD_D2,TAIJI_LCD_D3,360*12*2);
   esp_err_t result=spi_bus_initialize(SPI2_HOST,&bus,SPI_DMA_CH_AUTO);if(result!=ESP_OK)return result;
   esp_lcd_panel_io_handle_t io=nullptr;
@@ -81,4 +87,30 @@ esp_err_t taijiPresent(const uint8_t *bits,bool native,int selection,int view){
     if(result!=ESP_OK)return result;
     if(xSemaphoreTake(transferDone,pdMS_TO_TICKS(1000))!=pdTRUE){ready=false;return ESP_ERR_TIMEOUT;}
   }return ESP_OK;
+}
+
+void taijiCacheFrame(unsigned slot,const uint8_t *bits,int selection,int view){
+ if(slot>=3||!cardRgb[slot]||!bits)return;
+ for(int y=0;y<360;y++)for(int x=0;x<360;x++){
+  bool ink=bits[y*45+x/8]&(0x80>>(x%8));uint16_t c=pocket::roundTheme(x,y,ink,view,selection);
+  cardRgb[slot][y*360+x]=(c>>8)|(c<<8);
+ }
+}
+esp_err_t taijiPresentCached(int offset,bool previous,bool next){
+ if(!ready||!cardRgb[0])return ESP_ERR_INVALID_STATE;
+ uint32_t started=micros();unsigned rotation=displayDegrees;
+ for(int top=0;top<360;top+=12){
+  for(int row=0;row<12;row++)for(int x=0;x<360;x++){
+   auto point=pocket::orientRoundPoint(x,top+row,360,rotation);int lx=point.x,ly=point.y;
+   auto sample=pocket::streamSample(ly,offset,previous,next);unsigned slot=sample.slot;int sy=sample.row;
+   uint16_t color=slot<3&&sy>=0&&sy<360?cardRgb[slot][sy*360+lx]:0;
+   if(!color){uint16_t dark=pocket::rgb565(9,20,30);color=(dark>>8)|(dark<<8);}
+   int dx=lx-180,dy=ly-180;if(dx*dx+dy*dy>178*178)color=0;
+   stripe[row*360+x]=color;
+  }
+  while(xSemaphoreTake(transferDone,0)==pdTRUE){}
+  esp_err_t result=esp_lcd_panel_draw_bitmap(panel,0,top,360,top+12,stripe);if(result!=ESP_OK)return result;
+  if(xSemaphoreTake(transferDone,pdMS_TO_TICKS(1000))!=pdTRUE){ready=false;return ESP_ERR_TIMEOUT;}
+ }
+ lastRenderUs=micros()-started;motionFrames++;return ESP_OK;
 }

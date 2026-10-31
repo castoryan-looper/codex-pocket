@@ -252,6 +252,20 @@ void disconnectedImage() {
 
 void packet(const JsonDocument &doc) {
   String type = doc["type"] | "";
+#ifdef POCKET_TAIJI_KNOB32
+  if(type=="stream_preview"){
+    const char *anchor=doc["anchor"]|"";const char *rle=doc["roundRle"]|"";int direction=doc["direction"]|0;size_t packedLength=0;
+    if(!roundPacked||!roundDecoded||!anchor[0]||strlen(anchor)>32||(direction!=-1&&direction!=1)||strlen(rle)>13336)return;
+    if(mbedtls_base64_decode(roundPacked,10000,&packedLength,(const unsigned char*)rle,strlen(rle))!=0||!pocket::decodeBitmapRle(roundPacked,packedLength,roundDecoded,16200))return;
+    unsigned index=direction<0?0:1;int selection=doc["roundSelection"]|0;
+    xSemaphoreTake(imageMutex,portMAX_DELAY);
+    if(!strcmp(anchor,streamToken)&&streamPreviewBits[index]){
+      if(strcmp(anchor,previewAnchor[index])||selection!=streamPreviewSelection[index]||memcmp(streamPreviewBits[index],roundDecoded,16200)){
+        memcpy(streamPreviewBits[index],roundDecoded,16200);strlcpy(previewAnchor[index],anchor,33);streamPreviewSelection[index]=selection;streamPreviewRevision[index]++;
+      }
+    }xSemaphoreGive(imageMutex);return;
+  }
+#endif
   if (type == "frame") {
 #ifdef POCKET_TAIJI_KNOB32
     bool decodedRound=false;
@@ -273,7 +287,7 @@ void packet(const JsonDocument &doc) {
 #ifdef POCKET_TAIJI_KNOB32
     roundNative=decodedRound;if(decodedRound)memcpy(roundDesired,roundDecoded,16200);
     roundView=doc["roundView"]|0;roundSelection=doc["roundSelection"]|0;roundExpanded=doc["roundExpanded"]|false;roundBusy=doc["roundBusy"]|false;
-    roundCanRecord=doc["roundCanRecord"]|true;
+    roundCanRecord=doc["roundCanRecord"]|true;streamLayout=doc["streamLayout"]|1;streamCanPrevious=doc["streamHasPrev"]|false;streamCanNext=doc["streamHasNext"]|true;
     const char *nextToken=doc["streamToken"]|"";if(strlen(nextToken)<=32)strlcpy(streamToken,nextToken,sizeof(streamToken));else streamToken[0]=0;
 #endif
     pendingHash = doc["hash"] | "";
@@ -643,7 +657,7 @@ void setupNetwork() {
       hello["type"]="hello"; hello["token"]=remoteToken;
       hello["firmware"]=POCKET_FIRMWARE;
 #ifdef POCKET_TAIJI_KNOB32
-      if(roundDesired){hello["displayProfile"]="taiji360";hello["taskStream"]=1;}
+      if(roundDesired){hello["displayProfile"]="taiji360";hello["taskStream"]=1;hello["streamPrefetch"]=1;}
 #endif
       hello["wifiConnected"]=WiFi.status()==WL_CONNECTED;
       hello["usbConnected"]=HWCDC::isPlugged();

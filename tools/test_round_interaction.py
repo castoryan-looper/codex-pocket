@@ -14,6 +14,7 @@ class RoundInteractionTests(unittest.TestCase):
         pulse=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/directional_pulse_encoder.h').as_posix()
         theme=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/round_theme.h').as_posix()
         gestures=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/stream_gestures.h').as_posix()
+        motion=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/stream_motion.h').as_posix()
         code=r'''
 #include <cassert>
 #include "HEADER"
@@ -25,6 +26,7 @@ class RoundInteractionTests(unittest.TestCase):
 #include "PULSE"
 #include "THEME"
 #include "GESTURES"
+#include "MOTION"
 #include <vector>
 using namespace pocket;
 int main(){
@@ -73,6 +75,19 @@ int main(){
  assert(reader.read(readback,4)==1);assert(reader.available()==0);reader.close();
  RamAudioFile retry(store,false);assert(retry.read(readback,4)==4);assert(readback[0]==1&&readback[3]==4);
  assert(retry.write(payload,4)==0);retry.close();assert(retry.read(readback,4)==0);
+ StreamMotion motion;motion.begin();motion.drag(-70,true,true);assert(motion.offset==-70);
+ assert(motion.release(100,true,true,true,true)==1);motion.tick(175);assert(motion.offset< -70&&motion.offset> -StreamHeight);
+ motion.tick(250);assert(motion.phase==StreamMotion::Waiting&&motion.offset==-StreamHeight);
+ motion.tick(1750);assert(motion.phase==StreamMotion::Settling);motion.tick(1900);assert(motion.phase==StreamMotion::Idle&&motion.offset==0);
+ motion.begin();motion.drag(70,false,true);assert(motion.offset==14);assert(motion.release(2000,false,true,false,true)==0);motion.tick(2150);assert(motion.offset==0);
+ motion.begin();motion.drag(-80,false,false);assert(motion.release(3000,true,true,false,false)==1);motion.tick(3150);assert(motion.phase==StreamMotion::Waiting&&motion.offset==0);
+ motion.clear();assert(motion.phase==StreamMotion::Idle);
+ for(int offset=-StreamHeight;offset<=StreamHeight;offset++)for(int y=0;y<360;y++){
+  auto sample=streamSample(y,offset,true,true);assert(sample.slot<=2&&sample.row>=0&&sample.row<360);
+  if(y<StreamTop||y>=StreamBottom)assert(sample.slot==0&&sample.row==y);
+ }
+ assert(streamSample(StreamTop,-StreamHeight,true,true).slot==2);
+ assert(streamSample(StreamTop,StreamHeight,true,true).slot==1);
  StreamGestures gesture;
  assert(gesture.release(180,180,0,-60,200,100)==StreamIntent::Next);
  assert(gesture.release(180,180,0,60,200,200)==StreamIntent::Previous);
@@ -84,6 +99,8 @@ int main(){
  assert(gesture.release(180,180,0,0,100,1950)==StreamIntent::None);
  assert(gesture.release(180,180,0,0,600,2050)==StreamIntent::None);
  assert(gesture.release(180,295,0,0,100,2150)==StreamIntent::None);
+ gesture.clear();assert(gesture.release(180,76,0,0,100,3000,62)==StreamIntent::None);
+ assert(gesture.release(180,76,0,0,100,3300,62)==StreamIntent::Confirm);
  DirectionalPulseEncoder pulse;pulse.begin(3);
  pulse.edge(1,100);pulse.edge(3,250);assert(pulse.take(250)==1);
  pulse.edge(1,300);pulse.edge(3,450);assert(pulse.take(450)==0); // contact bounce
@@ -127,7 +144,7 @@ int main(){
  assert(!openRoundSettingsOnTurn(false,false,false,true,false));
  assert(!openRoundSettingsOnTurn(false,false,false,false,true));
 }
-'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry).replace('PULSE',pulse).replace('THEME',theme).replace('GESTURES',gestures)
+'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry).replace('PULSE',pulse).replace('THEME',theme).replace('GESTURES',gestures).replace('MOTION',motion)
         with tempfile.TemporaryDirectory() as folder:
             src=pathlib.Path(folder)/'round.cpp';src.write_text(code,encoding='utf-8')
             exe=pathlib.Path(folder)/'round.exe'

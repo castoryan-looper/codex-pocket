@@ -9,3 +9,8 @@ bool taijiDisplayReady();
 void taijiSetOrientation(unsigned displayDegrees,unsigned touchDegrees);
 unsigned taijiDisplayRotation();
 unsigned taijiTouchRotation();
+
+void taijiCacheFrame(unsigned slot,const uint8_t *bits,int selection,int view);
+esp_err_t taijiPresentCached(int offset,bool previous,bool next);
+unsigned taijiLastRenderMicros();
+unsigned taijiMotionFrames();

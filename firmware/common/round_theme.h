@@ -16,6 +16,7 @@ inline uint16_t roundTheme(int x,int y,bool ink,int view,int selected){
    bool active=i==selected;bg=i==0?(active?rgb565(128,240,191):rgb565(22,57,53)):(active?rgb565(157,177,255):rgb565(34,42,71));
    fg=active?rgb565(10,30,35):rgb565(216,230,245);
  }}
+ if(view==5&&y>=62&&y<270){bg=selected==1?rgb565(52,36,26):selected==2?rgb565(20,34,53):rgb565(12,36,36);fg=rgb565(239,247,244);}
  if(view==4&&roundRect(x,y,42,99,318,256,23)){
   bg=selected==1?rgb565(66,44,30):selected==2?rgb565(27,43,67):rgb565(18,47,48);
   fg=rgb565(233,247,242);
