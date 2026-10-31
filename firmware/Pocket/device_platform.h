@@ -3,7 +3,7 @@
 #ifdef POCKET_TAIJI_KNOB32
 #include <esp_heap_caps.h>
 #include "taiji_port.h"
-#define POCKET_FIRMWARE "codex-pocket-taiji-0.13.0"
+#define POCKET_FIRMWARE "codex-pocket-taiji-0.14.0"
 static volatile unsigned taijiBrightness=70;
 static volatile uint32_t taijiEncoderCount=0,taijiTouchCount=0;
 static volatile uint32_t taijiEncoderEdges=0;
@@ -21,6 +21,7 @@ static bool initRoundBuffers(){
 static volatile bool roundNative=false,roundExpanded=false,roundBusy=false;
 static volatile bool roundCanRecord=true;
 static volatile int roundView=0,roundSelection=0;
+static char streamToken[33]={},shownStreamToken[33]={};
 static volatile bool taijiMicHeld=false,taijiCancelHeld=false;
 static int pocketBootLevel(){return taijiMicHeld?LOW:HIGH;}
 static int pocketPowerLevel(){return taijiCancelHeld?LOW:HIGH;}

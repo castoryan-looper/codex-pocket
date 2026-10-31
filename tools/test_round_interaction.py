@@ -13,6 +13,7 @@ class RoundInteractionTests(unittest.TestCase):
         geometry=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/round_geometry.h').as_posix()
         pulse=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/directional_pulse_encoder.h').as_posix()
         theme=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/round_theme.h').as_posix()
+        gestures=(pathlib.Path(__file__).resolve().parents[1]/'firmware/common/stream_gestures.h').as_posix()
         code=r'''
 #include <cassert>
 #include "HEADER"
@@ -23,6 +24,7 @@ class RoundInteractionTests(unittest.TestCase):
 #include "GEOMETRY"
 #include "PULSE"
 #include "THEME"
+#include "GESTURES"
 #include <vector>
 using namespace pocket;
 int main(){
@@ -71,6 +73,17 @@ int main(){
  assert(reader.read(readback,4)==1);assert(reader.available()==0);reader.close();
  RamAudioFile retry(store,false);assert(retry.read(readback,4)==4);assert(readback[0]==1&&readback[3]==4);
  assert(retry.write(payload,4)==0);retry.close();assert(retry.read(readback,4)==0);
+ StreamGestures gesture;
+ assert(gesture.release(180,180,0,-60,200,100)==StreamIntent::Next);
+ assert(gesture.release(180,180,0,60,200,200)==StreamIntent::Previous);
+ assert(gesture.release(180,180,0,0,100,1000)==StreamIntent::None);
+ assert(gesture.release(181,181,0,0,100,1300)==StreamIntent::Confirm);
+ assert(gesture.release(180,180,0,0,100,1500)==StreamIntent::None);
+ gesture.clear();assert(gesture.release(180,180,0,0,100,1700)==StreamIntent::None);
+ assert(gesture.release(180,180,0,-55,100,1800)==StreamIntent::Next);
+ assert(gesture.release(180,180,0,0,100,1950)==StreamIntent::None);
+ assert(gesture.release(180,180,0,0,600,2050)==StreamIntent::None);
+ assert(gesture.release(180,295,0,0,100,2150)==StreamIntent::None);
  DirectionalPulseEncoder pulse;pulse.begin(3);
  pulse.edge(1,100);pulse.edge(3,250);assert(pulse.take(250)==1);
  pulse.edge(1,300);pulse.edge(3,450);assert(pulse.take(450)==0); // contact bounce
@@ -114,7 +127,7 @@ int main(){
  assert(!openRoundSettingsOnTurn(false,false,false,true,false));
  assert(!openRoundSettingsOnTurn(false,false,false,false,true));
 }
-'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry).replace('PULSE',pulse).replace('THEME',theme)
+'''.replace('HEADER',header).replace('RLE',rle).replace('ENCODER',encoder).replace('AUDIO',audio).replace('DUAL',dual).replace('GEOMETRY',geometry).replace('PULSE',pulse).replace('THEME',theme).replace('GESTURES',gestures)
         with tempfile.TemporaryDirectory() as folder:
             src=pathlib.Path(folder)/'round.cpp';src.write_text(code,encoding='utf-8')
             exe=pathlib.Path(folder)/'round.exe'

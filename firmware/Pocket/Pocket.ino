@@ -274,6 +274,7 @@ void packet(const JsonDocument &doc) {
     roundNative=decodedRound;if(decodedRound)memcpy(roundDesired,roundDecoded,16200);
     roundView=doc["roundView"]|0;roundSelection=doc["roundSelection"]|0;roundExpanded=doc["roundExpanded"]|false;roundBusy=doc["roundBusy"]|false;
     roundCanRecord=doc["roundCanRecord"]|true;
+    const char *nextToken=doc["streamToken"]|"";if(strlen(nextToken)<=32)strlcpy(streamToken,nextToken,sizeof(streamToken));else streamToken[0]=0;
 #endif
     pendingHash = doc["hash"] | "";
     imageDirty = true;
@@ -642,7 +643,7 @@ void setupNetwork() {
       hello["type"]="hello"; hello["token"]=remoteToken;
       hello["firmware"]=POCKET_FIRMWARE;
 #ifdef POCKET_TAIJI_KNOB32
-      if(roundDesired)hello["displayProfile"]="taiji360";
+      if(roundDesired){hello["displayProfile"]="taiji360";hello["taskStream"]=1;}
 #endif
       hello["wifiConnected"]=WiFi.status()==WL_CONNECTED;
       hello["usbConnected"]=HWCDC::isPlugged();
