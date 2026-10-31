@@ -122,4 +122,6 @@ COM12 实测芯片为 ESP32-S3、16 MB Flash / 8 MB PSRAM。先读取完整 16 M
 
 ### Taiji 0.14.0 纵向任务流
 
-44 项设备侧测试通过，覆盖双击、垂直滑动、长按/录音区不确认、滑动后清除旧双击。S3 编译 1664607 bytes，静态 RAM 71160 bytes。cloud 130 项测试通过，新增浏览不执行、可见停留、偏好持久化、双会话并行/修改独占、队列落盘失败、送达不明不重试、重启不重放、审批阅读/陈旧选择拒绝、语音答案绑定原问题与显式提交。界面用真实 C++ 彩色主题生成四场景预览。等待主控 USB 连接后进行实机刷写与浏览验收。
+44 项设备侧测试通过，覆盖双击、垂直滑动、长按/录音区不确认、滑动后清除旧双击。S3 编译 1664607 bytes，静态 RAM 71160 bytes。cloud 130 项测试通过，新增浏览不执行、可见停留、偏好持久化、双会话并行/修改独占、队列落盘失败、送达不明不重试、重启不重放、审批阅读/陈旧选择拒绝、语音答案绑定原问题与显式提交。界面用真实 C++ 彩色主题生成四场景预览。主控 USB 恢复后已实机刷写，见下方启动回执。
+
+0.14.0 实机启动回执：COM12 确认为 S3，应用写入 1664752 bytes，hash verified；启动后 status 返回 firmware=codex-pocket-taiji-0.14.0、wifiConnected=true、wifiReason=0、cloudConnected=true、cloudTransportConnected=true、screenPhase=4、taskStream=1、taskStreamVisible=true，无音频错误。只写应用分区 0x10000，保留现有 Wi-Fi 与服务配置。该回执证明新版任务流已协商并完成 LCD 刷新；不等于已实测真实任务并行负载或所有触摸手势。
